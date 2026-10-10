@@ -3,16 +3,15 @@ import { useQuery } from "@tanstack/react-query";
 import { getSeats } from "@/api/seats";
 import { useLanguage } from "@/hooks/useLanguage";
 import { Armchair, RefreshCw, ChevronLeft, ChevronRight, Clock } from "lucide-react";
-import ReservationModal from "./ReservationModal ";
-import axios from "axios";
+import ReservationModal from "./ReservationModal";
+import { getTodayReservations } from "@/api/reservation";
 import { toast } from "sonner";
 import { useUniversityVerification } from "@/hooks/useUniversityVerification";
 
 const PAGE_SIZE = 10;
 
 const fetchTodayReservations = async () => {
-  const res = await axios.get("/api/reservation/today");
-  return res.data;
+  return await getTodayReservations();
 };
 
 const fmt = (d, lang = "en") =>

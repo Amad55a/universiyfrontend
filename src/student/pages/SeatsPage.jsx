@@ -13,16 +13,14 @@ import axios from "axios";
 import { toast } from "sonner";
 import { useUniversityVerification } from "@/hooks/useUniversityVerification";
 import { sectionWrap } from "@/shared/constants/surfaces";
-import ReservationModal from "../components/ReservationModal ";
 import socket from "@/socket";
-import { getReservationMeta } from "@/api/reservation";
+import { getReservationMeta, getTodayReservations } from "@/api/reservation";
 import { useServerClock } from "@/hooks/Usesomaliaclock";
 
 const PAGE_SIZE = 10;
 
 const fetchTodayReservations = async () => {
-  const res = await axios.get("/api/v1/reservations/today");
-  return res.data;
+  return await getTodayReservations();
 };
 
 const fetchReservationMeta = () => getReservationMeta();

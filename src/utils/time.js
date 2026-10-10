@@ -1,10 +1,13 @@
 export const OPEN_HOUR = 7;
 export const CLOSE_HOUR = 17;
 
-export const getClockParts = (date) => ({
-  hour: date.getHours(),
-  minute: date.getMinutes(),
-});
+export const getClockParts = (date) => {
+  const d = date instanceof Date && !isNaN(date) ? date : new Date();
+  return {
+    hour: d.getHours(),
+    minute: d.getMinutes(),
+  };
+};
 
 export const formatHoursRange = () => {
   const fmt = (h) => {

@@ -1,6 +1,6 @@
-import axios from "axios";
+import api from "./client";
 
-const BASE = "/api/v1/reservations";
+const BASE = "/reservations";
 
 // ─────────────────────────────────────────────────────────────────
 // SERVER CLOCK SYNC
@@ -39,7 +39,7 @@ export const syncServerTime = async () => {
 
   inFlightSync = (async () => {
     const requestStart = nowPerf();
-    const res = await axios.get(`${BASE}/meta`);
+    const res = await api.get(`${BASE}/meta`);
     const requestEnd = nowPerf();
 
     const roundTrip = requestEnd - requestStart;
@@ -88,11 +88,36 @@ export const ensureServerTimeSynced = () => {
 // ─────────────────────────────────────────────────────────────────
 
 export const getReservationMeta = async () => {
-  const res = await axios.get(`${BASE}/meta`);
+  const res = await api.get(`${BASE}/meta`);
   return res.data;
 };
 
 export const createReservation = async ({ seatId, slotIndex, durationSlots }) => {
-  const res = await axios.post(`${BASE}/createReserve`, { seatId, slotIndex, durationSlots });
+  const res = await api.post(`${BASE}/createReserve`, { seatId, slotIndex, durationSlots });
+  return res.data;
+};
+
+export const getTodayReservations = async () => {
+  const res = await api.get(`${BASE}/today`);
+  return res.data;
+};
+
+export const getSeatBookedSlots = async (seatId) => {
+  const res = await api.get(`${BASE}/seat/${seatId}/slots`);
+  return res.data;
+};
+
+export const cancelReservation = async (reservationId) => {
+  const res = await api.patch(`${BASE}/${reservationId}/cancel`);
+  return res.data;
+};
+
+export const extendReservation = async (reservationId, extensionMinutes) => {
+  const res = await api.patch(`${BASE}/${reservationId}/extend`, { extensionMinutes });
+  return res.data;
+};
+
+export const rescheduleReservation = async (reservationId, { slotIndex, durationSlots }) => {
+  const res = await api.patch(`${BASE}/${reservationId}/reschedule`, { slotIndex, durationSlots });
   return res.data;
 };

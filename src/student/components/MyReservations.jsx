@@ -1,4 +1,5 @@
 import { getMyReservations } from "@/api/myreservation";
+import { getSeatBookedSlots, extendReservation, rescheduleReservation, cancelReservation } from "@/api/reservation";
 import { OPEN_HOUR, CLOSE_HOUR } from "@/utils/time";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -9,7 +10,6 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useState, useEffect, useMemo, useCallback } from "react";
-import axios from "axios";
 import { toast } from "sonner";
 import { useLanguage } from "@/hooks/useLanguage";
 import { sectionWrap } from "@/shared/constants/surfaces";
@@ -65,8 +65,7 @@ const isSameBooking = (b, reservation) =>
   new Date(b.endTime).getTime() === new Date(reservation.endTime).getTime();
 
 const fetchBookedSlots = async (seatId) => {
-  const res = await axios.get(`/api/v1/reservations/seat/${seatId}/slots`);
-  return res.data;
+  return await getSeatBookedSlots(seatId);
 };
 
 const fmt = (date, language = "en") =>
@@ -186,7 +185,7 @@ const ExtendModal = ({ reservation, onClose }) => {
 
   const { mutate, isPending: isLoading } = useMutation({
     mutationFn: async (extensionMinutes) =>
-      axios.patch(`/api/v1/reservations/${reservation._id}/extend`, { extensionMinutes }),
+      extendReservation(reservation._id, extensionMinutes),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["myReservations"] });
       queryClient.invalidateQueries({ queryKey: ["todayReservations"] });
@@ -379,7 +378,7 @@ const InlineSlotEditor = ({ reservation, now, onSuccess, onCancel }) => {
 
   const { mutate, isPending: isLoading } = useMutation({
     mutationFn: async ({ slotIndex, durationSlots }) =>
-      axios.patch(`/api/v1/reservations/${reservation._id}/reschedule`, { slotIndex, durationSlots }),
+      rescheduleReservation(reservation._id, { slotIndex, durationSlots }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["myReservations"] });
       queryClient.invalidateQueries({ queryKey: ["todayReservations"] });
@@ -532,7 +531,7 @@ const CancelConfirm = ({ reservationId, hasQr, onDone, onAbort }) => {
   const queryClient = useQueryClient();
 
   const { mutate, isPending: isLoading } = useMutation({
-    mutationFn: () => axios.patch(`/api/v1/reservations/${reservationId}/cancel`),
+    mutationFn: () => cancelReservation(reservationId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["myReservations"] });
       queryClient.invalidateQueries({ queryKey: ["todayReservations"] });

@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import axios from "axios";
-import { createReservation } from "@/api/reservation";
+import { createReservation, getSeatBookedSlots } from "@/api/reservation";
 import { OPEN_HOUR, CLOSE_HOUR, formatHoursRange } from "@/utils/time";
 import { useLanguage } from "@/hooks/useLanguage";
 import {
@@ -78,8 +77,7 @@ const overlapsBooking = (start, end, booking, today) => {
 };
 
 const fetchBookedSlots = async (seatId) => {
-  const res = await axios.get(`/api/v1/reservations/seat/${seatId}/slots`);
-  return res.data;
+  return await getSeatBookedSlots(seatId);
 };
 
 const DURATION_OPTIONS = [
