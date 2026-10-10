@@ -1,10 +1,11 @@
 // src/features/auth/forgot-password/ForgotPassword.jsx
 import {
   Eye, EyeOff, ArrowRight, CheckCircle2, Loader2,
-  AlertCircle, Lock, ShieldCheck,
+  AlertCircle, Lock,
 } from "lucide-react";
+import React from "react";
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useLanguage } from "@/hooks/useLanguage";
 import UnicoreLogo from "@/FrontDoorSystem/components/Logo";
@@ -129,32 +130,44 @@ const ErrorAlert = ({ msg, className = "" }) => (
 // ─── Main component ───────────────────────────────────────────────────────────
 const ForgotPassword = () => {
   const { t } = useLanguage();
+  const location = useLocation();
   const navigate = useNavigate();
+  const resetLinkParams = new URLSearchParams(location.hash.slice(1));
+  const linkedEmail = resetLinkParams.get("email");
+  const linkedCode = resetLinkParams.get("code");
 
-  // step: "email" | "sending" | "verify" | "verifying" | "success"
-  const [step, setStep]               = useState("email");
+  // step: "email" | "sending" | "verify" | "success"
+  const [step, setStep]               = useState(() => linkedEmail && linkedCode ? "verify" : "email");
   const [loadingPhase, setLoadingPhase] = useState(0);
+  const [resetPending, setResetPending] = useState(false);
+  const resetPendingRef = useRef(false);
 
-  const [email, setEmail]           = useState("");
-  const [code, setCode]             = useState("");
+  const [email, setEmail]           = useState(linkedEmail || "");
+  const [code, setCode]             = useState(linkedCode || "");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPw, setConfirmPw]   = useState("");
-  const [showPw, setShowPw]         = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const [emailError, setEmailError] = useState("");
   const [resetError, setResetError] = useState("");
   const [turnstileToken, setTurnstileToken] = useState(null);
 
+  useEffect(() => {
+    if (!linkedEmail || !linkedCode) return;
+
+    navigate(`${location.pathname}${location.search}`, { replace: true });
+  }, [linkedCode, linkedEmail, location.pathname, location.search, navigate]);
+
   // Rotate loading text
   useEffect(() => {
-    if (step !== "sending" && step !== "verifying") return;
+    if (step !== "sending") return;
     const iv = setInterval(() => setLoadingPhase((p) => (p + 1) % 3), 850);
     return () => clearInterval(iv);
   }, [step]);
 
   const sendingTexts  = [t("auth.sendingResetCode1"), t("auth.sendingResetCode2"), t("auth.sendingResetCode3")];
-  const verifyingTexts = [t("auth.verifyingReset1"),   t("auth.verifyingReset2"),   t("auth.verifyingReset3")];
-  const loadingText   = step === "sending" ? sendingTexts[loadingPhase] : verifyingTexts[loadingPhase];
+  const loadingText   = sendingTexts[loadingPhase];
 
   // ── Step 1: Send reset code ───────────────────────────────────────────────
   const handleSendCode = async (e) => {
@@ -183,6 +196,7 @@ const ForgotPassword = () => {
   // ── Step 2: Verify code + set new password ────────────────────────────────
   const handleReset = async (e) => {
     e.preventDefault();
+    if (resetPendingRef.current) return;
 
     if (!code || !newPassword || !confirmPw) {
       setResetError(t("auth.fillAllFields")); return;
@@ -202,19 +216,21 @@ const ForgotPassword = () => {
     }
 
     setResetError("");
-    setStep("verifying");
-    setLoadingPhase(0);
+    resetPendingRef.current = true;
+    setResetPending(true);
 
     try {
       await api.post("/auth/reset-password", { email, code, newPassword });
       setStep("success");
+      toast.success(t("auth.resetSuccess"));
       setTimeout(() => {
-        toast.success(t("auth.resetSuccess"));
         navigate("/login");
       }, 2400);
     } catch (err) {
       setResetError(err.response?.data?.message || t("auth.resetFailed"));
-      setStep("verify");
+    } finally {
+      resetPendingRef.current = false;
+      setResetPending(false);
     }
   };
 
@@ -267,20 +283,16 @@ const ForgotPassword = () => {
           )}
 
           {/* ── LOADING (sending / verifying) ───────────────────────────────── */}
-          {(step === "sending" || step === "verifying") && (
+          {step === "sending" && (
             <div className="flex flex-col items-center text-center py-12 anim-fadeup">
               <div className="relative w-16 h-16 mb-6">
                 <div className="absolute inset-0 rounded-full border-4 border-[#2C2DE0] dark:border-[#2C2DE0]" />
                 <div className="absolute inset-0 rounded-full border-4 border-[#2C2DE0] border-t-transparent animate-spin" />
-                {step === "sending" ? (
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
-                    className="absolute inset-0 m-auto text-[#2C2DE0]">
-                    <path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-                      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                ) : (
-                  <ShieldCheck size={22} className="absolute inset-0 m-auto text-[#2C2DE0]" />
-                )}
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+                  className="absolute inset-0 m-auto text-[#2C2DE0]">
+                  <path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                    stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
               </div>
               <p className="text-base font-bold text-gray-900 dark:text-white min-h-6 anim-textswap">
                 {loadingText}
@@ -316,16 +328,17 @@ const ForgotPassword = () => {
 
               <form onSubmit={handleSendCode} className="flex flex-col gap-4">
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-[11px] font-bold uppercase tracking-widest text-gray-500 dark:text-gray-400">
+                  <label htmlFor="forgot-email" className="text-[11px] font-bold uppercase tracking-widest text-gray-600 dark:text-gray-300">
                     {t("common.email")}
                   </label>
                   <input
+                    id="forgot-email"
                     type="email"
                     value={email}
                     onChange={(e) => { setEmail(e.target.value); setEmailError(""); }}
                     placeholder={t("auth.emailPlaceholder")}
                     autoFocus
-                    className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#2C2DE0]/30 focus:border-[#2C2DE0] transition-all"
+                    className="forgot-email-input w-full appearance-none bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-xl px-4 py-3 text-sm text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 transition-all"
                   />
                 </div>
 
@@ -369,11 +382,11 @@ const ForgotPassword = () => {
               </p>
 
               {/* Locked email badge */}
-              <div className="mt-4 mb-1 flex items-center gap-2.5 bg-[#2C2DE0] dark:bg-[#2C2DE0]/10 border border-[#2C2DE0] dark:border-[#2C2DE0]/30 rounded-xl px-4 py-2.5">
+              <div className="mt-4 mb-1 flex items-center gap-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" className="text-[#2C2DE0] shrink-0">
                   <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" />
                 </svg>
-                <span className="text-xs font-mono font-bold tracking-widest text-[#2C2DE0] dark:text-[#2C2DE0]">
+                <span className="text-xs font-mono font-bold tracking-widest text-gray-800 dark:text-gray-100">
                   {email}
                 </span>
               </div>
@@ -384,10 +397,11 @@ const ForgotPassword = () => {
 
                 {/* Verification code */}
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-[11px] font-bold uppercase tracking-widest text-gray-500 dark:text-gray-400">
+                  <label htmlFor="reset-code" className="text-[11px] font-bold uppercase tracking-widest text-gray-600 dark:text-gray-300">
                     {t("auth.resetCodeLabel")}
                   </label>
                   <input
+                    id="reset-code"
                     type="text"
                     value={code}
                     onChange={(e) => { setCode(e.target.value); setResetError(""); }}
@@ -401,21 +415,25 @@ const ForgotPassword = () => {
 
                 {/* New password + strength meter */}
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-[11px] font-bold uppercase tracking-widest text-gray-500 dark:text-gray-400">
+                  <label htmlFor="new-password" className="text-[11px] font-bold uppercase tracking-widest text-gray-600 dark:text-gray-300">
                     {t("auth.newPasswordLabel")}
                   </label>
                   <div className="relative">
                     <Lock size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
                     <input
-                      type={showPw ? "text" : "password"}
+                      id="new-password"
+                      type={showNewPassword ? "text" : "password"}
                       value={newPassword}
                       onChange={(e) => { setNewPassword(e.target.value); setResetError(""); }}
                       placeholder={t("auth.passwordMinPlaceholder")}
                       className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 pl-10 pr-11 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#2C2DE0]/30 focus:border-[#2C2DE0] transition-all"
                     />
-                    <button onClick={() => setShowPw((s) => !s)}
+                    <button
+                      type="button"
+                      aria-label={showNewPassword ? "Hide new password" : "Show new password"}
+                      onClick={() => setShowNewPassword((visible) => !visible)}
                       className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
-                      {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
+                      {showNewPassword ? <EyeOff size={15} /> : <Eye size={15} />}
                     </button>
                   </div>
                   {/* ── Strength meter ── */}
@@ -424,18 +442,27 @@ const ForgotPassword = () => {
 
                 {/* Confirm password */}
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-[11px] font-bold uppercase tracking-widest text-gray-500 dark:text-gray-400">
+                  <label htmlFor="confirm-password" className="text-[11px] font-bold uppercase tracking-widest text-gray-600 dark:text-gray-300">
                     {t("auth.confirmPasswordLabel")}
                   </label>
                   <div className="relative">
                     <Lock size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
                     <input
-                      type={showPw ? "text" : "password"}
+                      id="confirm-password"
+                      type={showConfirmPassword ? "text" : "password"}
                       value={confirmPw}
                       onChange={(e) => { setConfirmPw(e.target.value); setResetError(""); }}
                       placeholder={t("auth.confirmPasswordLabel")}
-                      className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 pl-10 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#2C2DE0]/30 focus:border-[#2C2DE0] transition-all"
+                      className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 pl-10 pr-11 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#2C2DE0]/30 focus:border-[#2C2DE0] transition-all"
                     />
+                    <button
+                      type="button"
+                      aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
+                      onClick={() => setShowConfirmPassword((visible) => !visible)}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                    >
+                      {showConfirmPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                    </button>
                   </div>
                   {/* Confirm match indicator */}
                   {confirmPw && (
@@ -455,9 +482,11 @@ const ForgotPassword = () => {
 {/* 1. Reset Password */}
 <button
   type="submit"
-  disabled={!code.trim() || !newPassword || !confirmPw || step === "verifying"}
+  disabled={!code.trim() || !newPassword || !confirmPw || resetPending}
+  aria-busy={resetPending}
   className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-full bg-[#2C2DE0] text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none disabled:opacity-60 disabled:pointer-events-none transition-all duration-150 group"
 >
+  {resetPending && <Loader2 size={15} className="animate-spin" aria-hidden="true" />}
   {t("auth.resetPassword")}
   <ArrowRight size={15} className="group-hover:translate-x-0.5 transition-transform" />
 </button>
@@ -536,6 +565,11 @@ const ForgotPassword = () => {
 
       {/* Animations */}
       <style>{`
+        .forgot-email-input:focus {
+          outline: 2px solid #2C2DE0;
+          outline-offset: 2px;
+          border-color: #2C2DE0;
+        }
         @keyframes fadeup {
           from { opacity: 0; transform: translateY(14px); }
           to   { opacity: 1; transform: translateY(0); }

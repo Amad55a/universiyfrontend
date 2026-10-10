@@ -56,6 +56,7 @@ api.interceptors.request.use((config) => {
 
   if (config.url) {
     config.url = normalizeRequestUrl(config.url, config.baseURL || api.defaults.baseURL);
+    config.baseURL = "";
   }
 
   return config;
