@@ -9,7 +9,7 @@ import { useState, useCallback, useEffect, useRef, memo, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import api, { getAccessToken } from "@/api/client";
-import { getBookReadUrl } from "@/api/books";
+import { getBookReadUrl, shouldRefreshBookPdfSession } from "@/api/books";
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
@@ -520,6 +520,7 @@ const BookReader = () => {
   const [themeId, setThemeId] = useState("light");
   const [aiTrigger, setAiTrigger] = useState(0);
   const [pageLoaded, setPageLoaded] = useState(false);
+  const [pdfLoadAttempt, setPdfLoadAttempt] = useState(0);
   const [timeStart] = useState(Date.now());
   const [aiExpanded, setAiExpanded] = useState(false);
   const pdfContainerRef = useRef(null);
@@ -718,13 +719,8 @@ const BookReader = () => {
     enabled: !!id,
   });
 
-  // ── FIX: react-pdf's <Document> performs its own network request and does
-  // NOT go through the `api` axios instance above, so the auth token was
-  // never attached to this request. The backend's readEbook() requires
-  // req.user?.universityVerified, so the unauthenticated request was
-  // rejected (401/403) and react-pdf surfaced that as "Failed to load PDF".
-  // Passing the object form of `file` (with httpHeaders) makes react-pdf
-  // attach the Authorization header itself.
+  // react-pdf makes its own request, bypassing the Axios 401 refresh
+  // interceptor. Attach the current token and refresh once if it expired.
   const pdfUrl = book ? getBookReadUrl(id, api.defaults.baseURL) : null;
   const token = getAccessToken();
   const pdfFile = useMemo(() => pdfUrl
@@ -734,6 +730,21 @@ const BookReader = () => {
         withCredentials: true,
       }
     : null, [pdfUrl, token]);
+
+  const handlePdfLoadError = useCallback(async (error) => {
+    if (shouldRefreshBookPdfSession(error, pdfLoadAttempt)) {
+      setPdfError(false);
+      try {
+        await api.post("/auth/refresh-token", {}, { withCredentials: true });
+        setPdfLoadAttempt(1);
+        return;
+      } catch {
+        setPdfError(true);
+        return;
+      }
+    }
+    setPdfError(true);
+  }, [pdfLoadAttempt]);
 
   const onDocumentLoad = useCallback(async (pdf) => {
     setNumPages(pdf.numPages);
@@ -970,9 +981,10 @@ const BookReader = () => {
             </div>
           ) : (
             <Document
+              key={`${pdfUrl}-${pdfLoadAttempt}`}
               file={pdfFile}
               onLoadSuccess={onDocumentLoad}
-              onLoadError={() => setPdfError(true)}
+              onLoadError={handlePdfLoadError}
               loading={
                 <div style={{ marginTop: "100px", textAlign: "center" }}>
                   <div style={{ width: "32px", height: "32px", border: `2px solid ${T.accent}`, borderTopColor: "transparent", borderRadius: "50%", margin: "0 auto 14px", animation: "spin 0.8s linear infinite" }} />
