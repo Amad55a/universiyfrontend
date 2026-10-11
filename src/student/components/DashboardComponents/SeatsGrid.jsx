@@ -7,6 +7,7 @@ import ReservationModal from "./ReservationModal";
 import { getTodayReservations } from "@/api/reservation";
 import { toast } from "sonner";
 import { useUniversityVerification } from "@/hooks/useUniversityVerification";
+import { SOMALIA_TIME_ZONE, toSomaliaDateTime } from "@/utils/time";
 
 const PAGE_SIZE = 10;
 
@@ -16,7 +17,7 @@ const fetchTodayReservations = async () => {
 
 const fmt = (d, lang = "en") =>
   new Date(d).toLocaleTimeString(lang === "so" ? "so-SO" : "en-US", {
-    hour: "numeric", minute: "2-digit", hour12: true,
+    hour: "numeric", minute: "2-digit", hour12: true, timeZone: SOMALIA_TIME_ZONE,
   });
 
 const OPEN = 7;
@@ -29,8 +30,10 @@ const getAvailableSlots = (bookedSlots) => {
   const free = [];
   let cursor = OPEN * 60;
   sorted.forEach((r) => {
-    const startMin = new Date(r.startTime).getHours() * 60 + new Date(r.startTime).getMinutes();
-    const endMin = new Date(r.endTime).getHours() * 60 + new Date(r.endTime).getMinutes();
+    const start = toSomaliaDateTime(r.startTime);
+    const end = toSomaliaDateTime(r.endTime);
+    const startMin = start.hour * 60 + start.minute;
+    const endMin = end.hour * 60 + end.minute;
     if (startMin > cursor) free.push({ from: cursor, to: startMin });
     cursor = Math.max(cursor, endMin);
   });
@@ -99,7 +102,7 @@ const SeatCard = ({
     seat.status === "reserved" ||
     seat.isReserved === true;
   const disabled =
-    isFullyBookedToday(seat) ||
+    isFullyBooked ||
     lockedUnverified ||
     lockedGirlsOnly;
   const isGirlsOnly = seat.zone === "girls_only";
@@ -175,7 +178,7 @@ const SeatCard = ({
 // ─────────────────────────────────────────────────────────────────────────────
 // ReservedTable — grouped by seat, shows booked + available time slots
 // ─────────────────────────────────────────────────────────────────────────────
-const ReservedTable = ({ reservations, isLoading, lang, t, common }) => {
+const ReservedTable = ({ reservations, isLoading, lang, t }) => {
   const [page, setPage] = useState(1);
 
   // Group reservations by seat
@@ -359,11 +362,6 @@ const SeatsGrid = () => {
     return map;
   }, [todayReservations]);
 
-  const isReservedNow = (seat) =>
-    seat.status === "reserved" ||
-    seat.status === "occupied" ||
-    seat.isReserved === true;
-
   const isFullyBookedToday = (seat) => {
     const bookings = bookingsBySeatId[String(seat._id)] || [];
 
@@ -470,7 +468,6 @@ const SeatsGrid = () => {
           isLoading={reservationsLoading}
           lang={language}
           t={seatsText}
-          common={t.common}
         />
 
       ) : (

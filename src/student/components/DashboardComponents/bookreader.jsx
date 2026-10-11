@@ -9,6 +9,7 @@ import { useState, useCallback, useEffect, useRef, memo, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import api, { getAccessToken } from "@/api/client";
+import { getBookReadUrl } from "@/api/books";
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
@@ -724,8 +725,7 @@ const BookReader = () => {
   // rejected (401/403) and react-pdf surfaced that as "Failed to load PDF".
   // Passing the object form of `file` (with httpHeaders) makes react-pdf
   // attach the Authorization header itself.
-  const apiBase = api.defaults.baseURL ?? "";
-  const pdfUrl = book ? `${apiBase.replace(/\/+$/u, "")}/books/${id}/read` : null;
+  const pdfUrl = book ? getBookReadUrl(id, api.defaults.baseURL) : null;
   const token = getAccessToken();
   const pdfFile = useMemo(() => pdfUrl
     ? {
@@ -972,13 +972,7 @@ const BookReader = () => {
             <Document
               file={pdfFile}
               onLoadSuccess={onDocumentLoad}
-              onLoadError={(err) => {
-                // Keep this during debugging — it will show a 401/403 (auth),
-                // a CORS error, or a stream/parse error, which tells you
-                // exactly which of the three causes it is.
-                console.error("PDF load error:", err);
-                setPdfError(true);
-              }}
+              onLoadError={() => setPdfError(true)}
               loading={
                 <div style={{ marginTop: "100px", textAlign: "center" }}>
                   <div style={{ width: "32px", height: "32px", border: `2px solid ${T.accent}`, borderTopColor: "transparent", borderRadius: "50%", margin: "0 auto 14px", animation: "spin 0.8s linear infinite" }} />

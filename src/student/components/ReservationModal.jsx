@@ -1,7 +1,14 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createReservation, getSeatBookedSlots } from "@/api/reservation";
-import { OPEN_HOUR, CLOSE_HOUR, formatHoursRange } from "@/utils/time";
+import { DateTime } from "luxon";
+import {
+  OPEN_HOUR,
+  CLOSE_HOUR,
+  formatHoursRange,
+  SOMALIA_TIME_ZONE,
+  toSomaliaDateTime,
+} from "@/utils/time";
 import { useLanguage } from "@/hooks/useLanguage";
 import {
   X,
@@ -67,13 +74,11 @@ const addDuration = (slot, durationHours) => {
 const overlapsBooking = (start, end, booking, today) => {
   const { hours: sh, minutes: sm } = parseSlot(start);
   const { hours: eh, minutes: em } = parseSlot(end);
-  const slotStart = new Date(today);
-  slotStart.setHours(sh, sm, 0, 0);
-  const slotEnd = new Date(today);
-  slotEnd.setHours(eh, em, 0, 0);
-  const bookingStart = new Date(booking.startTime).getTime();
-  const bookingEnd = new Date(booking.endTime).getTime();
-  return slotStart.getTime() < bookingEnd && slotEnd.getTime() > bookingStart;
+  const slotStart = today.set({ hour: sh, minute: sm, second: 0, millisecond: 0 });
+  const slotEnd = today.set({ hour: eh, minute: em, second: 0, millisecond: 0 });
+  const bookingStart = toSomaliaDateTime(booking.startTime).toMillis();
+  const bookingEnd = toSomaliaDateTime(booking.endTime).toMillis();
+  return slotStart.toMillis() < bookingEnd && slotEnd.toMillis() > bookingStart;
 };
 
 const fetchBookedSlots = async (seatId) => {
@@ -135,8 +140,8 @@ export default function ReservationModal({ seat, onClose }) {
     staleTime: 0,
   });
 
-  const now = new Date();
-  const bookingOpen = now.getHours() >= OPEN_HOUR && now.getHours() < CLOSE_HOUR;
+  const now = DateTime.now().setZone(SOMALIA_TIME_ZONE);
+  const bookingOpen = now.hour >= OPEN_HOUR && now.hour < CLOSE_HOUR;
 
   // Error banners auto-dismiss after 5s instead of sitting there forever.
   useEffect(() => {
@@ -183,9 +188,8 @@ export default function ReservationModal({ seat, onClose }) {
     const end = addDuration(slot, duration);
     if (!end) return { slot, state: "closed" };
     const { hours, minutes } = parseSlot(slot);
-    const slotTime = new Date(now);
-    slotTime.setHours(hours, minutes, 0, 0);
-    if (slotTime <= now) return { slot, state: "past" };
+    const slotTime = now.set({ hour: hours, minute: minutes, second: 0, millisecond: 0 });
+    if (slotTime.toMillis() <= now.toMillis()) return { slot, state: "past" };
     const taken = bookedSlots.some((b) => overlapsBooking(slot, end, b, now));
     return { slot, state: taken ? "taken" : "free" };
   });
