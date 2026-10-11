@@ -1,10 +1,10 @@
 import axios from "axios";
-import { resolveApiBaseUrl } from "./baseUrl.js";
+import { resolveApiBaseUrl, resolveApiOrigin } from "./baseUrl.js";
 
 const explicitBaseUrl = import.meta.env.VITE_API_BASE_URL ?? import.meta.env.VITE_API_URL ?? "/api/v1";
 const normalizedBaseUrl = resolveApiBaseUrl(explicitBaseUrl);
 
-axios.defaults.baseURL = normalizedBaseUrl;
+axios.defaults.baseURL = resolveApiOrigin(normalizedBaseUrl);
 axios.defaults.withCredentials = true;
 window.API_BASE_URL = normalizedBaseUrl;
 

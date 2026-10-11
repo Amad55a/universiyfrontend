@@ -3,12 +3,17 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { loadEnv } from 'vite'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '')
+  const backendTarget = env.VITE_DEV_API_PROXY_TARGET || 'http://localhost:8080'
+
+  return {
   plugins: [
     react(),
     tailwindcss()
@@ -23,17 +28,17 @@ export default defineConfig({
     },
     proxy: {
       '/api': {
-        target: 'http://localhost:3000',
+        target: backendTarget,
         changeOrigin: false,
         secure: false,
       },
       '/uploads': {
-        target: 'http://localhost:3000',
+        target: backendTarget,
         changeOrigin: false,
         secure: false,
       },
       '/socket.io': {
-        target: 'http://localhost:3000',
+        target: backendTarget,
         changeOrigin: false,
         secure: false,
         ws: true,
@@ -61,5 +66,6 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: './src/setupTests.js'
+  }
   }
 })

@@ -98,7 +98,8 @@ export const NotificationProvider = ({ children }) => {
 
     fetchNotifications?.("all", true);
 
-    const socketUrl = import.meta.env.VITE_SOCKET_URL || import.meta.env.VITE_API_SERVER_URL || import.meta.env.VITE_API_URL?.replace(/\/api(\/v1)?\/?$/i, "") || (typeof window !== "undefined" ? window.location.origin : "");
+    const configuredApiUrl = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || "";
+    const socketUrl = import.meta.env.VITE_SOCKET_URL || import.meta.env.VITE_API_SERVER_URL || configuredApiUrl.replace(/\/api(\/v1)?\/?$/i, "") || (typeof window !== "undefined" ? window.location.origin : "");
     const socket = io(socketUrl, {
       auth:                 { token },
       transports:           ["websocket", "polling"],

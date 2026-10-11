@@ -45,10 +45,11 @@ const Chats = () => {
       return;
     }
 
-    joinChatRoom(activeId);
+    const stopRejoining = joinChatRoom(activeId);
     getMessages(activeId)
       .then((d) => { if (d.success) setMessages(d.messages ?? []); })
       .catch(() => toast.error("Could not load messages"));
+    return stopRejoining;
   }, [activeId]);
 
   useEffect(() => {

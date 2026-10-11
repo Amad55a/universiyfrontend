@@ -33,10 +33,10 @@ const GroupCard = ({ group }) => (
   >
     <div className="flex items-start gap-4">
       <div className="w-12 h-12 rounded-xl bg-[#2C2DE0] flex items-center justify-center text-white font-black text-lg flex-shrink-0">
-        {group.name.slice(0, 2).toUpperCase()}
+        {(group.name ?? "").slice(0, 2).toUpperCase() || "?"}
       </div>
       <div className="flex-1 min-w-0">
-        <h2 className="font-black text-black dark:text-white">{group.name}</h2>
+        <h2 className="font-black text-black dark:text-white">{group.name ?? "—"}</h2>
         <div className="flex flex-wrap gap-1.5 mt-1">
           {group.semester && (
             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#2C2DE0]/10 dark:bg-[#2C2DE0]/20 text-[#2C2DE0] dark:text-[#2C2DE0]">

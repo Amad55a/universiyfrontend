@@ -24,6 +24,11 @@ export const resolveApiBaseUrl = (provided = "", host = "") => {
   return DEFAULT_BACKEND_URL;
 };
 
+export const resolveApiOrigin = (provided = "") => {
+  const baseUrl = resolveApiBaseUrl(provided);
+  return /^https?:\/\//iu.test(baseUrl) ? new URL(baseUrl).origin : "";
+};
+
 export const buildGoogleAuthUrl = (provided = "", host = "") => {
   const baseUrl = resolveApiBaseUrl(provided, host);
   return `${baseUrl}/auth/google`;

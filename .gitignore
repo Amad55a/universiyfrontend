@@ -10,6 +10,7 @@ lerna-debug.log*
 # Local environment files
 .env
 .env.*
+!.env.example
 
 node_modules
 dist

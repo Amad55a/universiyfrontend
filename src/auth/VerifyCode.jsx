@@ -79,7 +79,7 @@ const VerifyCode = () => {
     setLoading(true);
     setLoadingPhase(0);
     try {
-      await axios.post("/api/v1/auth/resend-code", { email: email.trim() });
+      await api.post("/auth/resend-code", { email: email.trim() });
       toast.success(t("auth.newVerificationCodeSent"));
       setStep(2);
     } catch (err) {
@@ -134,7 +134,7 @@ const VerifyCode = () => {
     }
     setResendLoading(true);
     try {
-      await axios.post("/api/v1/auth/resend-code", { email: email.trim() });
+      await api.post("/auth/resend-code", { email: email.trim() });
       toast.success(t("auth.newVerificationCodeSent"));
     } catch (err) {
       toast.error(err.response?.data?.message || t("auth.resendFailed"));

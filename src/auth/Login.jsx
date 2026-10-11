@@ -53,6 +53,7 @@ const LoginPage = () => {
   const [loading, setLoading] = useState(false);
   const [loadingPhase, setLoadingPhase] = useState(0);
   const [captchaToken, setCaptchaToken] = useState(null);
+  const [captchaResetKey, setCaptchaResetKey] = useState(0);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -81,6 +82,11 @@ const LoginPage = () => {
     setFormData((p) => ({ ...p, [e.target.name]: e.target.value }));
 
   const submitLogin = async () => {
+    if (import.meta.env.VITE_TURNSTILE_SITE_KEY && !captchaToken) {
+      toast.error("Please complete the human verification.");
+      return;
+    }
+
     setLoading(true);
     setLoadingPhase(0);
 
@@ -100,6 +106,8 @@ const LoginPage = () => {
       if (userData?.role === "admin") navigate("/admin/dashboard");
       else navigate("/dashboard");
     } catch (err) {
+      setCaptchaToken(null);
+      setCaptchaResetKey((key) => key + 1);
       const message = err.response?.data?.message || t("auth.loginFailed");
       toast.error(message);
 
@@ -264,6 +272,7 @@ const LoginPage = () => {
                   </Link>
                 </div>
                 <TurnstileCaptcha
+                  key={captchaResetKey}
                   onVerify={(token) => setCaptchaToken(token)}
                   onExpire={() => setCaptchaToken(null)}
                 />

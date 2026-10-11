@@ -152,6 +152,7 @@ const ForgotPassword = () => {
   const [emailError, setEmailError] = useState("");
   const [resetError, setResetError] = useState("");
   const [turnstileToken, setTurnstileToken] = useState(null);
+  const [captchaResetKey, setCaptchaResetKey] = useState(0);
 
   useEffect(() => {
     if (!linkedEmail || !linkedCode) return;
@@ -188,6 +189,8 @@ const ForgotPassword = () => {
       // Transition directly to verify — no extra animating state needed
       setStep("verify");
     } catch (err) {
+      setTurnstileToken(null);
+      setCaptchaResetKey((key) => key + 1);
       setEmailError(err.response?.data?.message || t("auth.genericError"));
       setStep("email");
     }
@@ -343,6 +346,7 @@ const ForgotPassword = () => {
                 </div>
 
                 <TurnstileCaptcha
+                  key={captchaResetKey}
                   onVerify={(token) => setTurnstileToken(token)}
                   onExpire={() => setTurnstileToken(null)}
                 />
