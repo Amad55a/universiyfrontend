@@ -6,6 +6,7 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getSeats } from "@/api/seats";
+import ReservationModal from "@/student/components/ReservationModal";
 
 import { useLanguage } from "@/hooks/useLanguage";
 import { RefreshCw, ChevronLeft, ChevronRight, Clock, Armchair } from "lucide-react";
@@ -109,18 +110,6 @@ const SeatCard = ({ seat, isFullyBooked, lockedUnverified, lockedGirlsOnly, onSe
   const isTaken = isReservedNow || isFullyBooked;
   const disabled = isTaken || isFullyBooked || lockedUnverified || lockedGirlsOnly;
   const accentColor = isTaken ? "#d1d5db" : isGirlsOnly ? "#ec4899" : "#2C2DE0";
-
-  // ──── DEBUG: Log seat status on first render and when now changes ────────
-  React.useEffect(() => {
-    console.log(`🪑 [SeatCard] Seat ${seat.seatNumber}`, {
-      now: now?.toISOString(),
-      activeSlot: activeSlot ? { status: activeSlot.status, start: activeSlot.startTime, end: activeSlot.endTime } : null,
-      nextSlot: nextSlot ? { start: nextSlot.startTime } : null,
-      isReservedNow,
-      isTaken,
-      upcomingSlotsCount: seat.upcomingSlots?.length,
-    });
-  }, [now, seat._id, activeSlot, nextSlot, isReservedNow, isTaken, seat.seatNumber]);
 
   let statusLabel = t.available;
   if (isReservedNow && activeSlot) {
@@ -373,22 +362,6 @@ const SeatsGrid = () => {
   // crashed the page (`now` was referenced below but never defined).
   const now = useServerClock(reservationMeta?.serverTime);
 
-  // ──── DEBUG: Log time information ────────────────────────────────────────
-  useEffect(() => {
-    if (now && reservationMeta?.serverTime) {
-      console.log("🕐 [SeatsPage] TIME DEBUG", {
-        clientTime: new Date().toISOString(),
-        somaliaClock: now?.toISOString(),
-        serverTime: reservationMeta.serverTime,
-        timestamp: now?.getTime(),
-      });
-    }
-  }, [now, reservationMeta?.serverTime]);
-
-
-
-
-
   const bookingHour = now.getHours();
   const bookingOpen = bookingHour >= OPEN && bookingHour < CLOSE;
   useEffect(() => {
@@ -464,25 +437,6 @@ const SeatsGrid = () => {
 
   const totalPages = Math.ceil(filteredSeats.length / PAGE_SIZE);
   const pageSeats = filteredSeats.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-
-  // ──── DEBUG: Log seat statistics ─────────────────────────────────────────
-  useEffect(() => {
-    console.log("📊 [SeatsPage] SEAT STATISTICS", {
-      now: now?.toISOString(),
-      totalSeats,
-      availableCount,
-      reservedCount,
-      filteredSeatsCount: filteredSeats.length,
-      currentFilter: filter,
-      currentPage: page,
-      pageSeats: pageSeats.map((s) => ({
-        number: s.seatNumber,
-        zone: s.zone,
-        fullyBooked: isFullyBookedToday(s),
-        upcomingSlotsCount: s.upcomingSlots?.length,
-      })),
-    });
-  }, [now, totalSeats, availableCount, reservedCount, filteredSeats, filter, page, pageSeats, isFullyBookedToday]);
 
   const filterOptions = [
     { key: "all", label: seatsText.all },
