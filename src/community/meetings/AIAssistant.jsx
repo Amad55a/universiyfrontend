@@ -159,12 +159,12 @@ Be concise, friendly, and academically accurate. Format responses with markdown 
           onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
           placeholder="Ask anything about this class…"
           disabled={loading}
-          className="flex-1 px-3 py-2 rounded-xl bg-white dark:bg-gray-900/10 border border-white/20 text-white text-xs placeholder:text-white/40 focus:outline-none focus:ring-1 focus:ring-[#2C2DE0] disabled:opacity-50"
+          className="flex-1 px-3 py-2 rounded-xl bg-gray-900 border border-white/20 text-white text-xs placeholder:text-white/40 caret-white focus:outline-none focus:ring-1 focus:ring-[#2C2DE0] focus:border-[#2C2DE0] disabled:opacity-50"
         />
-        <button className="bg-[#2C2DE0] text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150 group"
+        <button
           onClick={() => sendMessage()}
           disabled={loading || !input.trim()}
-          className="px-3 py-2 rounded-xl bg-[#2C2DE0] text-black font-bold disabled:opacity-40 hover:bg-[#3A3BE8] transition-colors shadow-lg"
+          className="px-3 py-2 rounded-xl bg-[#2C2DE0] text-white font-bold disabled:opacity-40 hover:bg-[#3A3BE8] transition-colors shadow-lg"
         >
           <Send size={14} />
         </button>

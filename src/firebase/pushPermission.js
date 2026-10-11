@@ -1,7 +1,7 @@
-import axios from "axios";
 import { getToken, onMessage } from "firebase/messaging";
 import { getMessagingSafe } from "./firebase";
 import { toast } from "sonner";
+import api from "@/api/client";
 
 const todayKey = () => {
   const d = new Date();
@@ -103,7 +103,7 @@ export const requestPushPermission = async () => {
     }
 
     console.log("[FCM Token Generated Successfully]:", token.substring(0, 15) + "...");
-    await axios.post("/api/v1/auth/fcm-token", { token }, { withCredentials: true });
+    await api.post("/auth/fcm-token", { token }, { withCredentials: true });
 
     await attachForegroundMessageListener();
 
@@ -113,4 +113,3 @@ export const requestPushPermission = async () => {
     return { ok: false, reason: err.message || "unknown_error" };
   }
 };
-

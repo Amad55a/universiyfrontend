@@ -130,6 +130,7 @@ const SignupPage = () => {
   const { t } = useLanguage();
   const navigate = useNavigate();
   const [captchaToken, setCaptchaToken] = useState(null);
+  const [captchaResetKey, setCaptchaResetKey] = useState(0);
 
 
   // step: "register" | "sending" | "verify"
@@ -218,6 +219,8 @@ const SignupPage = () => {
       setSavedEmail(registerData.email);
       setStep("verify");
     } catch (err) {
+      setCaptchaToken(null);
+      setCaptchaResetKey((key) => key + 1);
       const data = err.response?.data;
 
       if (data?.message === "An account with this email already exists.") {
@@ -432,6 +435,7 @@ const SignupPage = () => {
                 </div>
 
                 <TurnstileCaptcha
+                  key={captchaResetKey}
                   onVerify={(token) => setCaptchaToken(token)}
                   onExpire={() => setCaptchaToken(null)}
                 />

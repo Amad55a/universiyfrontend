@@ -17,9 +17,11 @@ export const sendMessage = (conversationId, text) =>
   api.post(`/chat/${conversationId}/messages`, { text }).then((r) => r.data);
 
 export const joinChatRoom = (conversationId) => {
-  if (conversationId) {
-    socket.emit("chat:join", conversationId);
-  }
+  if (!conversationId) return () => {};
+  const join = () => socket.emit("chat:join", conversationId);
+  if (socket.connected) join();
+  socket.on("connect", join);
+  return () => socket.off("connect", join);
 };
 
 export const onChatMessage = (handler) => {

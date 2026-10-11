@@ -22,7 +22,11 @@ const InfoTab = ({ group, canManage, onSaved }) => {
         setForm({ description: group?.description || "", purpose: group?.purpose || "", rules: group?.rules || "" });
     }, [group]);
 
-    const groupAdmins = (group?.members || []).filter((m) => m.adminLevel === "group_admin");
+    // Populate may return null for a member whose User document was deleted
+    // (orphaned ObjectId). Filter those out so the map below never touches null.
+    const groupAdmins = (group?.members || []).filter(
+        (m) => m.adminLevel === "group_admin" && m.user != null
+    );
 
     const handleSave = async () => {
         setSaving(true);
@@ -128,10 +132,10 @@ const InfoTab = ({ group, canManage, onSaved }) => {
                     {groupAdmins.length ? (
                         groupAdmins.map((m) => (
                             <span
-                                key={m.user._id}
+                                key={m.user?._id ?? m.user?.id}
                                 className="text-xs font-bold px-2 py-1 rounded-full bg-[#2C2DE0]/10 dark:bg-[#2C2DE0]/20 text-[#2C2DE0] dark:text-[#2C2DE0]"
                             >
-                                {m.user.name}
+                                {m.user?.name ?? "Unknown admin"}
                             </span>
                         ))
                     ) : (
