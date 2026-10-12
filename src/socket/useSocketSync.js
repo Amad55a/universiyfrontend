@@ -18,8 +18,9 @@ import { useAuth } from "../context/AuthContext";
 
 export const useSocketSync = () => {
     const queryClient = useQueryClient();
-    const { user, logout } = useAuth();
+    const { user, loading, logout } = useAuth();
     const navigate = useNavigate(); // ✅ safe here — this hook is used inside <BrowserRouter>
+    const userId = user?._id ?? user?.id;
     const isRegistered = useRef(false);
     // Keep a stable ref to the latest user so the socket handler always sees it
     const userRef = useRef(user);
@@ -28,7 +29,7 @@ export const useSocketSync = () => {
     // ── Register socket listeners ONCE on mount ───────────────────────────
     useEffect(() => {
         if (!isRegistered.current && queryClient) {
-            registerSocketListeners(queryClient);
+            registerSocketListeners(queryClient, () => userRef.current?._id ?? userRef.current?.id);
             isRegistered.current = true;
         }
         return () => {
@@ -38,6 +39,33 @@ export const useSocketSync = () => {
             }
         };
     }, [queryClient]); // queryClient is stable — this truly runs once
+
+    useEffect(() => {
+        if (loading || !userId) {
+            socket.disconnect();
+            return;
+        }
+
+        socket.connect();
+    }, [userId, loading]);
+
+    useEffect(() => {
+        const handleTokenChange = (event) => {
+            if (!userRef.current) {
+                socket.disconnect();
+                return;
+            }
+            if (event.detail?.authenticated) {
+                socket.disconnect();
+                socket.connect();
+            } else {
+                socket.disconnect();
+            }
+        };
+
+        window.addEventListener("unicores:auth-token-changed", handleTokenChange);
+        return () => window.removeEventListener("unicores:auth-token-changed", handleTokenChange);
+    }, []);
 
     // ── Join user room on connect / reconnect ─────────────────────────────
     useEffect(() => {

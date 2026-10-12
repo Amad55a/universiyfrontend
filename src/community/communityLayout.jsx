@@ -16,6 +16,7 @@ const CommunityLayout = () => {
   };
 
   const isMeetingRoom = location.pathname.includes("/meetings/room/");
+  const isChatPage = location.pathname === "/community/chat";
 
   if (isMeetingRoom) {
     return (
@@ -27,7 +28,7 @@ const CommunityLayout = () => {
 
   return (
     <div
-      className="flex min-h-screen w-full bg-white dark:bg-black gap-6 lg:gap-10"
+      className="flex min-h-dvh w-full min-w-0 bg-white dark:bg-black gap-0 lg:gap-10"
       style={{ fontFamily: CHARTER_FONT_STACK }}
     >
       {/* Left sidebar */}
@@ -38,8 +39,8 @@ const CommunityLayout = () => {
       {/* Center column */}
       <div className="flex-1 min-w-0 flex flex-col">
         <CommunityHeader onWritePost={() => setWriteOpen(true)} notificationCount={0} />
-        <main className="flex-1 w-full">
-          <div className="w-full mx-auto px-6 sm:px-10 py-8 sm:py-10">
+        <main className={`flex-1 w-full min-w-0 ${isChatPage ? "flex min-h-0" : ""}`}>
+          <div className={`w-full min-w-0 mx-auto ${isChatPage ? "flex min-h-0 px-0 py-0" : "px-3 sm:px-6 lg:px-10 py-5 sm:py-8 lg:py-10"}`}>
             <Outlet context={{ onOpenWrite: () => setWriteOpen(true), newPost }} />
           </div>
         </main>

@@ -26,34 +26,12 @@ const AuthProvider = ({ children }) => {
 
     const checkAuth = async () => {
       try {
-        console.log("[AuthContext] checking /auth/me with credentials");
         const userObj = await fetchCurrentUser();
         if (cancelled) return;
-        console.log("[AuthContext] auth check success", userObj);
         setUser(userObj);
       } catch (err) {
-        // Access token may be expired — refresh cookie should restore the session
-        // without forcing the user to log in again on every page reload.
-        if (err?.response?.status === 401) {
-          try {
-            console.log("[AuthContext] session expired, trying refresh cookie");
-            const { data } = await api.post("/auth/refresh-token", {}, { withCredentials: true });
-            const newToken = data?.data?.accessToken || data?.accessToken;
-            if (newToken) setAccessToken(newToken);
-
-            const userObj = await fetchCurrentUser();
-            if (cancelled) return;
-            console.log("[AuthContext] refresh success", userObj);
-            setUser(userObj);
-            return;
-          } catch (refreshErr) {
-            console.error(
-              "[AuthContext] refresh failed",
-              refreshErr?.response?.status,
-              refreshErr?.message
-            );
-          }
-        } else {
+        // The shared API client already performs one coordinated refresh and retry.
+        if (err?.response?.status !== 401) {
           console.error("[AuthContext] auth check failed", err?.response?.status, err?.message);
         }
 
@@ -64,7 +42,6 @@ const AuthProvider = ({ children }) => {
         if (guestRaw) {
           try {
             const guestObj = normalizeUser(JSON.parse(guestRaw));
-            console.log("[AuthContext] restoring guest session", guestObj);
             setUser(guestObj);
           } catch {
             console.warn("[AuthContext] invalid guestUser in localStorage, clearing");

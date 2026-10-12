@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import React, { useEffect } from "react";
 import {
   Users,
   Armchair,
@@ -25,6 +25,7 @@ import ReservationAnalyticsWidget from "@/admin/components/Reservationanalyticsw
 import QuickAnalyticsCards from "@/admin/components/Quickanalyticscards";
 import { useLanguage } from "@/hooks/useLanguage";
 import { useTheme } from "@/hooks/useTheme";
+import api from "@/api/client";
 // Import your socket instance — adjust path to wherever you initialise it
 // e.g. import socket from "@/lib/socket";
 // If you don't have a shared socket instance, see the comment at the bottom.
@@ -45,14 +46,14 @@ const AdminDashboardPage = () => {
   const p = ap.pages.dashboard;
 
   // ── Fetch dashboard data (poll every 30 s as fallback) ───────────────────
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["admin-dashboard"],
     queryFn: async () => {
-      const res = await fetch("/api/v1/admin/dashboard", { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to fetch dashboard");
-      return res.json();
+      const { data: dashboard } = await api.get("/admin/dashboard");
+      return dashboard;
     },
     refetchInterval: 30_000,
+    retry: 1,
   });
 
   // ── Real-time refresh via Socket.IO ──────────────────────────────────────
@@ -97,7 +98,7 @@ const AdminDashboardPage = () => {
 
   // ── Helper: safe string from stats ───────────────────────────────────────
   const val = (key, fallback = 0) =>
-    isLoading ? "—" : String(stats?.[key] ?? fallback);
+    isLoading || isError ? "—" : String(stats?.[key] ?? fallback);
 
   // ── User stat cards ───────────────────────────────────────────────────────
   const userCards = [
@@ -207,6 +208,18 @@ const AdminDashboardPage = () => {
     <PageTransition>
       <NotificationWelcomeModal />
       <PageHeader title={p.title} subtitle={p.subtitle} badge={ap.brandShort} />
+      {isError && (
+        <div role="alert" className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-500/30 bg-red-500/5 px-4 py-3 text-sm">
+          <span>{error?.response?.data?.message || error?.message || "Dashboard data could not be loaded."}</span>
+          <button
+            type="button"
+            onClick={() => refetch()}
+            className="rounded-lg border border-current px-3 py-1.5 font-semibold hover:bg-red-500/10"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       {/* ── User statistics ── */}
       <motion.p

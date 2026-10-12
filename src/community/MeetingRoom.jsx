@@ -581,7 +581,11 @@ export default function MeetingRoom() {
   const [timer, setTimer] = useState(0);
   const [showSummary, setShowSummary] = useState(false);
   const [pinned, setPinned] = useState(null); // socketId
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(() =>
+    typeof window === "undefined" ||
+    typeof window.matchMedia !== "function" ||
+    window.matchMedia("(min-width: 640px)").matches
+  );
   const [activeTab, setActiveTab] = useState("chat");
   const [unread, setUnread] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -978,17 +982,17 @@ export default function MeetingRoom() {
   }
 
   return (
-    <div className="fixed inset-0 bg-[#F3F4F6] dark:bg-black flex flex-col text-black dark:text-white z-40 overflow-hidden">
+    <div className="fixed inset-0 h-dvh bg-[#F3F4F6] dark:bg-black flex flex-col text-black dark:text-white z-40 overflow-hidden">
 
       {/* ══ TOP BAR ══════════════════════════════════════════════════════════ */}
-      <header className="flex items-center justify-between px-4 py-2.5 bg-white dark:bg-[#111111] border-b border-gray-200 dark:border-white/10 z-30 shrink-0">
+      <header className="flex items-center justify-between gap-2 px-2 sm:px-4 py-2.5 bg-white dark:bg-[#111111] border-b border-gray-200 dark:border-white/10 z-30 shrink-0">
         {/* Left: Meeting info */}
-        <div className="flex items-center gap-3 min-w-0">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
           <div className="w-8 h-8 rounded-xl bg-[#2C2DE0]/20 flex items-center justify-center shrink-0">
             <Video size={15} className="text-[#2C2DE0]" />
           </div>
           <div className="min-w-0">
-            <h1 className="text-black dark:text-white font-black text-sm truncate max-w-[180px] sm:max-w-xs">
+            <h1 className="text-black dark:text-white font-black text-sm truncate max-w-[92px] sm:max-w-xs">
               {meeting?.title ?? "Class Meeting"}
             </h1>
             <div className="flex items-center gap-2 mt-0.5">
@@ -999,7 +1003,7 @@ export default function MeetingRoom() {
               {meeting?.course && (
                 <>
                   <span className="text-gray-300 dark:text-white/20">·</span>
-                  <span className="text-gray-500 dark:text-white/40 text-[10px]">{meeting.course}</span>
+                  <span className="hidden sm:inline text-gray-500 dark:text-white/40 text-[10px]">{meeting.course}</span>
                 </>
               )}
             </div>
@@ -1007,7 +1011,7 @@ export default function MeetingRoom() {
         </div>
 
         {/* Center: Toolbar items (Active meeting time + COMPACT FOCUS TIMER) */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
           {meeting?.isActive && (
             <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10">
               <span className="w-1.5 h-1.5 rounded-full bg-[#2C2DE0] animate-pulse" />
@@ -1024,14 +1028,14 @@ export default function MeetingRoom() {
         </div>
 
         {/* Right */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
           <div className="hidden sm:flex items-center gap-1 px-2 py-1.5 rounded-xl bg-gray-100 dark:bg-white/5 text-gray-500 dark:text-white/40 text-[10px] border border-gray-200 dark:border-white/10">
             <Wifi size={11} className="text-[#2C2DE0]" /> HD
           </div>
           {isHost && !meeting?.isActive && (
             <button
               onClick={handleStartMeeting}
-              className="px-4 py-2 rounded-xl bg-[#2C2DE0] text-white text-xs font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150"
+              className="px-2 sm:px-4 py-2 rounded-xl bg-[#2C2DE0] text-white text-[10px] sm:text-xs font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150 whitespace-nowrap"
             >
               Start Meeting
             </button>
@@ -1297,6 +1301,8 @@ export default function MeetingRoom() {
                         socket.emit("meeting:relay-event", { event: "meeting:force-tab", payload: "whiteboard" });
                       }
                     }}
+                    aria-label={label}
+                    title={label}
                     className={`
                       relative flex-1 flex flex-col items-center py-2.5 px-1 gap-0.5 text-[10px] font-bold
                       transition-colors shrink-0 min-w-[44px]
@@ -1345,7 +1351,7 @@ export default function MeetingRoom() {
       </div>
 
       {/* ══ BOTTOM CONTROLS ══════════════════════════════════════════════════ */}
-      <footer className="shrink-0 flex items-center justify-between gap-3 px-5 py-3.5 bg-white dark:bg-black border-t border-gray-200 dark:border-white/10 z-30 flex-wrap">
+      <footer className="shrink-0 flex items-center justify-between gap-2 px-2 sm:px-5 py-2 sm:py-3.5 bg-white dark:bg-black border-t border-gray-200 dark:border-white/10 z-30 flex-wrap">
         {/* Left: Sidebar toggle controls */}
         <div className="flex items-center gap-2.5">
           <button
@@ -1365,8 +1371,9 @@ export default function MeetingRoom() {
 
         {/* Center: Audio, Video, Screen Share, Hand, Chat, People, Files, Settings */}
         {/* Center: one merged control pill + end call kept separate */}
-        <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-5">
-          <div className="flex items-center gap-6 rounded-lg bg-black/5 dark:bg-white dark:bg-gray-900/5 px-5 py-3">
+        <div className="order-3 sm:order-none w-full sm:w-auto min-w-0 flex items-center justify-center gap-2 sm:gap-5">
+          <div className="max-w-full overflow-x-auto overscroll-x-contain">
+          <div className="flex w-max items-center gap-2 sm:gap-6 rounded-lg bg-black/5 dark:bg-white dark:bg-gray-900/5 px-2 sm:px-5 py-2 sm:py-3">
             <CtrlBtn
               id="btn-mic"
               onClick={webrtc.toggleMute}
@@ -1456,11 +1463,12 @@ export default function MeetingRoom() {
               )}
             </div>
           </div>
+          </div>
 
         </div>
 
         {/* Right: AI + Whiteboard shortcuts */}
-        <div className="flex items-center gap-2.5">
+        <div className="order-2 sm:order-none flex items-center gap-2.5">
           <button
             onClick={() => { setActiveTab("ai"); setSidebarOpen(true); }}
             title="AI Co-pilot"

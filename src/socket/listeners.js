@@ -8,7 +8,7 @@ import * as handlers from "./handlers";
 
 const registeredListeners = [];
 
-export const registerSocketListeners = (queryClient) => {
+export const registerSocketListeners = (queryClient, getUserId = () => undefined) => {
     if (!queryClient) {
         console.warn("[Socket] queryClient not provided to registerSocketListeners");
         return;
@@ -37,10 +37,12 @@ export const registerSocketListeners = (queryClient) => {
     on("borrow:updated", (data) => handlers.handleBorrowUpdated(queryClient, data));
 
     // ── NOTIFICATIONS ─────────────────────────────────────────────────────
-    on("notification:new", (data) => handlers.handleNotificationNew(queryClient, data));
-    on("notification:read", (data) => handlers.handleNotificationRead(queryClient, data));
+    on("notification:new", (data) => handlers.handleNotificationNew(queryClient, data, getUserId()));
+    on("notification:read", (data) => handlers.handleNotificationRead(queryClient, data, getUserId()));
     // Server pushes this from _pushCount() after mark-read / dismiss etc.
-    on("notification:unread_count", (data) => handlers.handleNotificationUnreadCount(queryClient, data));
+    on("notification:unread_count", (data) =>
+        handlers.handleNotificationUnreadCount(queryClient, data, getUserId())
+    );
 
     // ── USER STATUS ───────────────────────────────────────────────────────
     on("user:status_changed", (data) => handlers.handleUserStatusChanged(queryClient, data));

@@ -13,8 +13,12 @@ export const createGroupChat = (body) =>
 export const getMessages = (conversationId) =>
   api.get(`/chat/${conversationId}/messages`).then((r) => r.data);
 
-export const sendMessage = (conversationId, text) =>
-  api.post(`/chat/${conversationId}/messages`, { text }).then((r) => r.data);
+export const sendMessage = (conversationId, text, idempotencyKey = globalThis.crypto.randomUUID()) =>
+  api.post(
+    `/chat/${conversationId}/messages`,
+    { text },
+    { headers: { "Idempotency-Key": idempotencyKey } }
+  ).then((r) => r.data);
 
 export const joinChatRoom = (conversationId) => {
   if (!conversationId) return () => {};

@@ -3,7 +3,7 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Search, PenSquare, Bell, ChevronDown, X } from "lucide-react";
+import { Search, PenSquare, Bell, ChevronDown, X, Menu } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/hooks/useLanguage";
 import { Avatar } from "./ui";
@@ -18,8 +18,19 @@ const CommunityHeader = ({ onWritePost, notificationCount = 0 }) => {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [profileOpen, setProfileOpen] = useState(false);
+  const [navOpen, setNavOpen] = useState(false);
   const profileRef = useRef(null);
   const searchInputRef = useRef(null);
+  const mobileNavItems = [
+    { href: "/community", label: t["sidebar.feed"] ?? "Feed" },
+    { href: "/community/bookmarks", label: t["sidebar.bookmarks"] ?? "Bookmarks" },
+    { href: "/community/roadmaps", label: t["sidebar.roadmaps"] ?? "Roadmaps" },
+    { href: "/community/groups", label: t["sidebar.groups"] ?? "Groups" },
+    { href: "/community/meetings", label: t["sidebar.meetings"] ?? "Meetings" },
+    { href: "/community/chat", label: t["sidebar.chat"] ?? "Chat" },
+    { href: "/community/settings", label: t["sidebar.settings"] ?? "Settings" },
+    { href: "/community/help", label: t["sidebar.help"] ?? "Help" },
+  ];
 
   useEffect(() => {
     const handler = (e) => {
@@ -55,9 +66,19 @@ const CommunityHeader = ({ onWritePost, notificationCount = 0 }) => {
       style={{ fontFamily: "'Geist Variable', 'Inter', sans-serif" }}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 flex items-center gap-4">
+        <button
+          type="button"
+          className="lg:hidden p-2 -ml-2 rounded-full text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-900 transition-colors"
+          onClick={() => setNavOpen((open) => !open)}
+          aria-label={navOpen ? "Close community navigation" : "Open community navigation"}
+          aria-expanded={navOpen}
+          aria-controls="community-mobile-navigation"
+        >
+          {navOpen ? <X size={18} /> : <Menu size={18} />}
+        </button>
 
         {/* Logo — shown here on lg-down where the sidebar's own logo is off-screen */}
-        <Link to="/community" className="flex items-center lg:hidden flex-shrink-0">
+        <Link to="/community" className="hidden min-[380px]:flex items-center lg:hidden flex-shrink-0">
           <UnicoreLogo />
         </Link>
 
@@ -120,12 +141,25 @@ const CommunityHeader = ({ onWritePost, notificationCount = 0 }) => {
                   <p className="text-xs text-gray-400 truncate">{user?.email}</p>
                 </div>
                 {[
-                  { label: t["nav.profile"] ?? "Profile", href: "/profile" },
-                  { label: t["nav.stories"] ?? "My Stories", href: "/community/my-posts" },
-                  { label: t["nav.settings"] ?? "Settings", href: "/settings" },
+                  {
+                    label: t["nav.profile"] ?? "Profile",
+                    href: user?.role === "teacher"
+                      ? "/teacher/profile"
+                      : user?._id
+                      ? `/community/user/${user._id}`
+                      : "/profile",
+                  },
+                  {
+                    label: t["nav.stories"] ?? "My Stories",
+                    href: user?._id ? `/community/user/${user._id}` : "/community",
+                  },
+                  {
+                    label: t["nav.settings"] ?? "Settings",
+                    href: "/community/settings",
+                  },
                 ].map((item) => (
                   <Link
-                    key={item.href}
+                    key={item.href + item.label}
                     to={item.href}
                     onClick={() => setProfileOpen(false)}
                     className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors"
@@ -146,6 +180,25 @@ const CommunityHeader = ({ onWritePost, notificationCount = 0 }) => {
           </div>
         </div>
       </div>
+
+      {navOpen && (
+        <nav
+          id="community-mobile-navigation"
+          className="lg:hidden absolute inset-x-0 top-full z-40 grid grid-cols-2 sm:grid-cols-3 gap-1 border-b border-gray-100 dark:border-gray-900 bg-white dark:bg-black p-3 shadow-lg"
+          aria-label="Community navigation"
+        >
+          {mobileNavItems.map(({ href, label }) => (
+            <Link
+              key={href}
+              to={href}
+              onClick={() => setNavOpen(false)}
+              className="flex min-w-0 items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-900"
+            >
+              <span className="truncate">{label}</span>
+            </Link>
+          ))}
+        </nav>
+      )}
 
       {searchOpen && (
         <div className="md:hidden border-t border-gray-100 dark:border-gray-900 px-4 py-2.5 bg-white dark:bg-black">

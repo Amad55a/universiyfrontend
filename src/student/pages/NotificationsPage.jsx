@@ -132,6 +132,7 @@ const NotificationsPage = () => {
 
   const {
     notifications, unreadCount, loading, loadingMore, hasMore,
+    error, refreshNotifications, countError, countLoading, refreshUnreadCount,
     activeFilter, changeFilter,
     markAsRead, markAllAsRead, dismiss, clearAll, loadMore,
   } = useNotifications();
@@ -172,6 +173,28 @@ const NotificationsPage = () => {
           )}
         </div>
       </div>
+
+      {!loading && error && (
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-300" role="alert">
+          <span>Notifications could not be loaded.</span>
+          <button className="font-bold underline" onClick={() => refreshNotifications()}>
+            Retry
+          </button>
+        </div>
+      )}
+      {countLoading && unreadCount === 0 && (
+        <p className="mb-3 text-xs text-gray-500" role="status">
+          Loading unread count…
+        </p>
+      )}
+      {countError && (
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-300" role="alert">
+          <span>Unread count is unavailable.</span>
+          <button className="font-bold underline" onClick={() => refreshUnreadCount()}>
+            Retry
+          </button>
+        </div>
+      )}
 
       {/* Filter pills */}
       <div className="flex items-center gap-2 mb-6 overflow-x-auto pb-1 scrollbar-hide">
@@ -215,7 +238,7 @@ const NotificationsPage = () => {
       )}
 
       {/* Empty state */}
-      {!loading && notifications.length === 0 && (
+      {!loading && !error && notifications.length === 0 && (
         <div className="py-20 flex flex-col items-center text-center">
           <div className="w-16 h-16 rounded-2xl bg-gray-100 dark:bg-gray-900 flex items-center justify-center mb-4">
             <Bell size={24} className="text-gray-300 dark:text-gray-600" />

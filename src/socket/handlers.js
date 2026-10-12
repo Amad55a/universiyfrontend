@@ -143,12 +143,18 @@ export const handleBorrowUpdated = (queryClient, data) => {
  * We normalise it to match the shape useNotifications expects:
  *   { _id / deliveryId, type, title, message, isRead, createdAt, ... }
  */
-export const handleNotificationNew = (queryClient, data) => {
+const unreadCountKey = (userId) => ["notifications", userId, "unreadCount"];
+const adjustUnreadCount = (old, delta) => {
+    const current = typeof old === "number" ? old : Number(old?.count ?? 0);
+    return { count: Math.max(0, current + delta) };
+};
+
+export const handleNotificationNew = (queryClient, data, userId) => {
     // Build a notification object that matches what the notifications page renders
     const normalised = {
-        _id: data._id,
-        deliveryId: data._id,
-        notificationId: data._id,
+        _id: data.deliveryId ?? data._id,
+        deliveryId: data.deliveryId ?? data._id,
+        notificationId: data.notificationId ?? data._id,
         type: data.type ?? "system",
         title: data.title ?? data.titleKey ?? "",
         message: data.message ?? data.messageKey ?? "",
@@ -163,11 +169,19 @@ export const handleNotificationNew = (queryClient, data) => {
     };
 
     // Prepend to every "notifications" query in the cache (any filter / page)
-    queryClient.setQueriesData({ queryKey: ["notifications"] }, (old) => {
+    let alreadyPresent = false;
+    queryClient.setQueriesData({ queryKey: ["notifications", userId] }, (old) => {
         if (!old) return old;
         // Handle both array and paginated { notifications: [...] } shapes
-        if (Array.isArray(old)) return [normalised, ...old];
+        if (Array.isArray(old)) {
+            alreadyPresent ||= old.some((notification) => notification.deliveryId === normalised.deliveryId);
+            return alreadyPresent ? old : [normalised, ...old];
+        }
         if (Array.isArray(old.notifications)) {
+            alreadyPresent ||= old.notifications.some(
+                (notification) => notification.deliveryId === normalised.deliveryId
+            );
+            if (alreadyPresent) return old;
             return {
                 ...old,
                 notifications: [normalised, ...old.notifications],
@@ -178,35 +192,42 @@ export const handleNotificationNew = (queryClient, data) => {
     });
 
     // Bump the standalone unread counter query
-    queryClient.setQueryData(["notifications", "unreadCount"], (old = 0) => old + 1);
+    if (!alreadyPresent) {
+        queryClient.setQueryData(unreadCountKey(userId), (old) => adjustUnreadCount(old, 1));
+    }
 };
 
-export const handleNotificationRead = (queryClient, data) => {
-    queryClient.setQueriesData({ queryKey: ["notifications"] }, (old) => {
+export const handleNotificationRead = (queryClient, data, userId) => {
+    let changedUnread = false;
+    queryClient.setQueriesData({ queryKey: ["notifications", userId] }, (old) => {
         if (!old) return old;
         if (Array.isArray(old)) {
-            return old.map((n) =>
-                n._id === data._id ? { ...n, isRead: true, readAt: data.readAt } : n
-            );
+            return old.map((n) => {
+                if (n.deliveryId !== data.deliveryId && n._id !== data._id) return n;
+                if (!n.isRead) changedUnread = true;
+                return { ...n, isRead: true, readAt: data.readAt };
+            });
         }
         if (Array.isArray(old.notifications)) {
             return {
                 ...old,
-                notifications: old.notifications.map((n) =>
-                    n._id === data._id ? { ...n, isRead: true, readAt: data.readAt } : n
-                ),
+                notifications: old.notifications.map((n) => {
+                    if (n.deliveryId !== data.deliveryId && n._id !== data._id) return n;
+                    if (!n.isRead) changedUnread = true;
+                    return { ...n, isRead: true, readAt: data.readAt };
+                }),
             };
         }
         return old;
     });
-    queryClient.setQueryData(["notifications", "unreadCount"], (old = 0) =>
-        Math.max(0, old - 1)
-    );
+    if (changedUnread) {
+        queryClient.setQueryData(unreadCountKey(userId), (old) => adjustUnreadCount(old, -1));
+    }
 };
 
 // Handles the server's "notification:unread_count" push from NotificationController._pushCount
-export const handleNotificationUnreadCount = (queryClient, data) => {
-    queryClient.setQueryData(["notifications", "unreadCount"], data.count ?? 0);
+export const handleNotificationUnreadCount = (queryClient, data, userId) => {
+    queryClient.setQueryData(unreadCountKey(userId), { count: Number(data.count ?? 0) });
 };
 
 // ─── USER STATUS ──────────────────────────────────────────────────────────────

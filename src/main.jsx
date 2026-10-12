@@ -31,7 +31,7 @@ import SettingsPage from './admin/pages/SettingsPage'
 import SeatTimelinePage from './admin/pages/SeatTimeLinePage'
 import VerifyCode from './auth/VerifyCode'
 import OAuthCallback from './auth/OAuthCallback'
-import { AuthProvider } from './context/AuthContext'
+import { AuthProvider, useAuth } from './context/AuthContext'
 import { ThemeProvider } from './context/ThemeContext'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { SocketSyncProvider } from './socket/SocketSyncProvider'
@@ -93,6 +93,14 @@ import UserProfile from './community/userspagesss';
 import { HelmetProvider } from "react-helmet-async";
 
 
+
+const ProfileRedirect = () => {
+    const { user, loading } = useAuth();
+    if (loading) return null;
+    if (!user) return <Navigate to="/login" replace />;
+    if (user.role === "teacher") return <Navigate to="/teacher/profile" replace />;
+    return <Navigate to={`/community/user/${user._id || user.id}`} replace />;
+};
 
 const queryClient = new QueryClient();
 
@@ -232,6 +240,7 @@ createRoot(document.getElementById('root')).render(
                                             <Route path="groups/:id" element={<GroupDetailPage />} />
                                             <Route path="meetings" element={<Meetings />} />
                                             <Route path="meetings/room/:code" element={<MeetingRoom />} />
+                                            <Route path="user/:id" element={<UserProfile />} />
                                             <Route path="/community/user/:id" element={<UserProfile />} />
                                             <Route path="chat" element={<Chat />} />
                                             <Route path="settings" element={<CommunitySettings />} />
@@ -240,6 +249,9 @@ createRoot(document.getElementById('root')).render(
                                             <Route path="report" element={<ReportProblem />} />
                                             <Route path="support" element={<ContactUs />} />
                                         </Route>
+
+                                        <Route path="/profile" element={<ProfileRedirect />} />
+                                        <Route path="/settings" element={<Navigate to="/community/settings" replace />} />
 
                                     </Routes>
                                     <Toaster />

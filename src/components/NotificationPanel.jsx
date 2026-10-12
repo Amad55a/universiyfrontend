@@ -274,6 +274,7 @@ export const NotificationPanel = () => {
 
   const {
     notifications, unreadCount, loading, loadingMore, hasMore,
+    error, refreshNotifications, countLoading, countError, refreshUnreadCount,
     activeFilter, changeFilter,
     markAsRead, markAllAsRead, dismiss, clearAll, loadMore,
   } = useNotifications();
@@ -346,12 +347,32 @@ export const NotificationPanel = () => {
           ? "bg-gray-950 text-white dark:bg-white dark:text-gray-950 shadow-sm"
           : "hover:bg-gray-100 dark:hover:bg-white/10 text-gray-600 dark:text-gray-400"
           }`}
-        aria-label={n.title ?? "Notifications"}
+        aria-label={countError
+          ? "Notifications, unread count unavailable"
+          : countLoading
+            ? "Notifications, loading unread count"
+            : `Notifications, ${unreadCount} unread`}
       >
         <Bell size={18} className={pulse ? "animate-pulse" : ""} />
         {unreadCount > 0 && (
           <span className={`absolute -top-1 -right-1 min-w-[19px] h-[19px] rounded-full bg-[#2C2DE0] text-white text-[9px] font-black flex items-center justify-center px-1.5 shadow-sm ring-2 ring-white dark:ring-gray-950 tabular-nums ${pulse ? "animate-pulse" : ""}`}>
             {unreadCount > 99 ? "99+" : unreadCount}
+          </span>
+        )}
+        {countLoading && unreadCount === 0 && (
+          <span
+            className="absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-[#2C2DE0] border-t-transparent animate-spin"
+            role="status"
+            aria-label="Loading unread count"
+          />
+        )}
+        {countError && (
+          <span
+            className="absolute -top-1 -right-1 min-w-4 h-4 rounded-full bg-red-600 text-white text-[10px] font-bold flex items-center justify-center"
+            title="Unread count unavailable"
+            aria-label="Unread count unavailable"
+          >
+            !
           </span>
         )}
       </button>
@@ -423,6 +444,27 @@ export const NotificationPanel = () => {
                 </button>
               )}
             </div>
+            {countLoading && unreadCount === 0 && (
+              <p className="mt-2 text-[11px] text-gray-500" role="status">
+                Loading unread count…
+              </p>
+            )}
+            {countError && (
+              <p className="mt-2 flex items-center justify-between gap-2 text-[11px] text-red-600" role="alert">
+                <span>Unread count is unavailable.</span>
+                <button className="font-bold underline" onClick={() => refreshUnreadCount()}>
+                  Retry
+                </button>
+              </p>
+            )}
+            {error && (
+              <p className="mt-2 flex items-center justify-between gap-2 text-[11px] text-red-600" role="alert">
+                <span>Notifications could not be loaded.</span>
+                <button className="font-bold underline" onClick={() => refreshNotifications()}>
+                  Retry
+                </button>
+              </p>
+            )}
           </div>
 
           {/* Filter tabs */}
@@ -460,6 +502,13 @@ export const NotificationPanel = () => {
                     </div>
                   </div>
                 ))}
+              </div>
+            ) : error && notifications.length === 0 ? (
+              <div className="px-5 py-8 text-center text-sm text-red-600" role="alert">
+                Notifications could not be loaded.
+                <button className="ml-2 font-bold underline" onClick={() => refreshNotifications()}>
+                  Retry
+                </button>
               </div>
             ) : notifications.length === 0 ? (
               <div className="py-14 flex flex-col items-center text-center px-6">

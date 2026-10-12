@@ -110,13 +110,13 @@ const Groups = () => {
     (groups[active] ?? []).filter((g) => g.name.toLowerCase().includes(query.trim().toLowerCase()));
 
   return (
-    <div className="w-full mx-auto px-4 sm:px-6 py-6 flex gap-6">
+    <div className="w-full min-w-0 mx-auto px-0 sm:px-6 py-4 sm:py-6 flex flex-col sm:flex-row gap-4 sm:gap-6">
       {/* Sidebar */}
-      <aside className="w-48 flex-shrink-0 hidden sm:block">
-        <h1 className="text-lg font-black text-black dark:text-white mb-4 px-2">
+      <aside className="w-full sm:w-48 min-w-0 flex-shrink-0">
+        <h1 className="hidden sm:block text-lg font-black text-black dark:text-white mb-4 px-2">
           {t["community.nav.groups"] ?? "Groups"}
         </h1>
-        <nav className="space-y-1">
+        <nav className="flex gap-2 overflow-x-auto pb-1 sm:pb-0 sm:block sm:space-y-1" aria-label="Group categories">
           {SECTIONS.map(({ key, label, icon: Icon }) => (
             <button
               key={key}
@@ -126,7 +126,7 @@ const Groups = () => {
                 setQuery("");
                 setSearchResults(null);
               }}
-              className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-bold transition-colors ${
+              className={`w-auto sm:w-full flex shrink-0 items-center gap-2 px-3 py-2 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition-colors ${
                 active === key
                   ? "bg-[#2C2DE0] text-white shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150"
                   : "text-black/60 dark:text-white/60 hover:bg-black/5 dark:hover:bg-white/5"
