@@ -69,6 +69,8 @@ import TeacherResultsPage from './teacher/page/TeacherResultsPage';
 import TeacherResourcesPage from './teacher/page/TeacherResourcesPage';
 import TeacherProfilePage from './teacher/page/TeacherProfilePage';
 import StudentExamPortal from './student/pages/StudentExamPortal';
+import StudentExamDetailsPage from './student/pages/StudentExamDetailsPage';
+import StudentExamGuardDownloadPage from './student/pages/StudentExamGuardDownloadPage';
 import StudentExamSession from './student/pages/StudentExamSession';
 import StudentResultsPage from './student/pages/StudentResultsPage';
 import CommunityLayout from './community/communityLayout';
@@ -129,6 +131,7 @@ createRoot(document.getElementById('root')).render(
                                         <Route path="/oauth-callback" element={<OAuthCallback />} />
                                         <Route path="/my-qr" element={<MyQrCode />} />
                                         <Route path="/forgot-password" element={<ForgotPassword />} />
+                                        <Route path="/examguard/download" element={<StudentExamGuardDownloadPage />} />
 
                                         <Route path="/verify-university-id" element={
                                             <PrivateRouter>
@@ -157,6 +160,7 @@ createRoot(document.getElementById('root')).render(
                                             <Route path="/my-reservations" element={<MyReservationsPage />} />
                                             <Route path="/notifications" element={<NotificationsPage />} />
                                             <Route path="/exam-portal" element={<StudentExamPortal />} />
+                                            <Route path="/exams/:examId" element={<StudentExamDetailsPage />} />
                                             <Route path="/results" element={<StudentResultsPage />} />
                                         </Route>
 

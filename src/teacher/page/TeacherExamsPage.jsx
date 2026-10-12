@@ -65,6 +65,7 @@ const DEFAULT_SECURITY = {
 
 const DEFAULT_EXAM_FORM = {
   title: "",
+  instructions: "",
   classId: "",
   availableFrom: "",
   availableUntil: "",
@@ -282,6 +283,17 @@ export default function TeacherExamsPage() {
             <div>
               <label className="block text-sm font-medium mb-1">Exam title</label>
               <input type="text" className="w-full border p-2 rounded-lg dark:bg-neutral-700 dark:border-neutral-600" value={examForm.title} onChange={e => setExamForm({ ...examForm, title: e.target.value })} placeholder="Midterm Exam" />
+            </div>
+            <div className="col-span-2">
+              <label className="block text-sm font-medium mb-1">Student instructions (optional)</label>
+              <textarea
+                className="w-full border p-2 rounded-lg dark:bg-neutral-700 dark:border-neutral-600"
+                value={examForm.instructions}
+                onChange={e => setExamForm({ ...examForm, instructions: e.target.value })}
+                maxLength={10000}
+                rows={3}
+                placeholder="Instructions students should read before starting."
+              />
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Class</label>

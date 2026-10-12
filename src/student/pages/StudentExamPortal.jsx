@@ -43,10 +43,15 @@ function toSebDeepLink(httpUrl) {
 const LAUNCH_DETECT_MS = 2200;
 
 export default function StudentExamPortal() {
-  const [tokenInput, setTokenInput] = useState("");
+  const [tokenInput, setTokenInput] = useState(() => {
+    const tokenParam = new URLSearchParams(window.location.search).get("token");
+    return tokenParam ? tokenParam.trim().toUpperCase() : "";
+  });
   const [examData, setExamData] = useState(null);
   const [isValidating, setIsValidating] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
+  const [launchTicket, setLaunchTicket] = useState(null);
+  const [launchTicketMessage, setLaunchTicketMessage] = useState("");
 
   // idle -> launching -> ("handed-off" tab loses focus, we just wait) | "not-detected"
   const [launchState, setLaunchState] = useState("idle");
@@ -55,12 +60,16 @@ export default function StudentExamPortal() {
   const { t } = useLanguage();
   const { user, loading: authLoading } = useAuth();
   const launchTimerRef = useRef(null);
+  const ticketTimerRef = useRef(null);
 
   // Guards against the sound firing more than once per verified token —
   // e.g. if the component re-renders or the user backs out and re-enters.
   const hasPlayedSoundRef = useRef(false);
 
-  useEffect(() => () => clearTimeout(launchTimerRef.current), []);
+  useEffect(() => () => {
+    clearTimeout(launchTimerRef.current);
+    clearTimeout(ticketTimerRef.current);
+  }, []);
 
   const playTokenVerifiedSound = () => {
     if (hasPlayedSoundRef.current || !inSeb) return;
@@ -86,9 +95,6 @@ export default function StudentExamPortal() {
     const tokenParam = params.get("token");
     const auto = params.get("autostart");
     if (!tokenParam) return;
-
-    // Pre-fill the token input so the UI looks right
-    setTokenInput(tokenParam.trim().toUpperCase());
 
     // If autostart requested, we're inside SEB, and the user is authenticated,
     // validate the token and immediately start the session.
@@ -125,6 +131,9 @@ export default function StudentExamPortal() {
   const handleValidate = async e => {
     e.preventDefault();
     if (!tokenInput.trim()) return;
+    clearTimeout(ticketTimerRef.current);
+    setLaunchTicket(null);
+    setLaunchTicketMessage("");
 
     setIsValidating(true);
     try {
@@ -165,6 +174,55 @@ export default function StudentExamPortal() {
       }
     } finally {
       setIsStarting(false);
+    }
+  };
+
+  const handleCreateExamGuardTicket = async () => {
+    if (!examData?.examId || sebRequired) return;
+    clearTimeout(ticketTimerRef.current);
+    setLaunchTicket(null);
+    setLaunchTicketMessage("");
+
+    try {
+      const { data } = await api.post(
+        `/exams/student/${examData.examId}/launch-ticket`,
+        {},
+        { withCredentials: true }
+      );
+      const issued = data?.data;
+      const expiresAt = Date.parse(issued?.expiresAt);
+      if (
+        typeof issued?.ticket !== "string" ||
+        !/^[A-Za-z0-9_-]{43}$/.test(issued.ticket) ||
+        !Number.isFinite(expiresAt)
+      ) {
+        throw new Error("UniCORE returned an invalid launch ticket.");
+      }
+
+      setLaunchTicket({ value: issued.ticket, expiresAt });
+      setLaunchTicketMessage("Enter this one-time ticket in ExamGuard. It expires in 60 seconds.");
+      ticketTimerRef.current = setTimeout(() => {
+        setLaunchTicket(null);
+        setLaunchTicketMessage("The launch ticket expired. Request a new one if needed.");
+      }, Math.max(0, expiresAt - Date.now()));
+    } catch (err) {
+      setLaunchTicketMessage(
+        err.response?.data?.message || err.message || "Could not create a launch ticket."
+      );
+    }
+  };
+
+  const handleCopyExamGuardTicket = async () => {
+    if (!launchTicket || launchTicket.expiresAt <= Date.now()) {
+      setLaunchTicket(null);
+      setLaunchTicketMessage("The launch ticket expired. Request a new one if needed.");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(launchTicket.value);
+      setLaunchTicketMessage("Ticket copied. Paste it into ExamGuard before it expires.");
+    } catch {
+      setLaunchTicketMessage("Copy was unavailable. Select and copy the ticket manually.");
     }
   };
 
@@ -416,8 +474,59 @@ export default function StudentExamPortal() {
 
               {!isStarting && <ArrowRight className="w-4 h-4" />}
             </button>
+
+            {!sebRequired && (
+              <div className="space-y-3">
+                {!launchTicket ? (
+                  <button
+                    type="button"
+                    onClick={handleCreateExamGuardTicket}
+                    className="w-full rounded-lg border border-[#2C2DE0] bg-white px-6 py-3 text-sm font-semibold text-[#2C2DE0] transition-colors hover:bg-[#2C2DE0]/5"
+                  >
+                    Open in ExamGuard
+                  </button>
+                ) : (
+                  <>
+                    <label
+                      className="block text-sm font-medium text-neutral-700 dark:text-neutral-300"
+                      htmlFor="examguard-ticket"
+                    >
+                      One-time ExamGuard ticket
+                    </label>
+                    <input
+                      id="examguard-ticket"
+                      type="text"
+                      readOnly
+                      value={launchTicket.value}
+                      autoComplete="off"
+                      spellCheck={false}
+                      className="w-full rounded-lg border border-[#2C2DE0] bg-white p-3 font-mono text-sm tracking-wide text-[#2C2DE0]"
+                      onFocus={(event) => event.target.select()}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleCopyExamGuardTicket}
+                      className="w-full rounded-lg bg-[#2C2DE0] px-6 py-3 text-sm font-semibold text-white"
+                    >
+                      Copy ticket
+                    </button>
+                  </>
+                )}
+                {launchTicketMessage && (
+                  <p className="text-center text-xs text-[#2C2DE0]" aria-live="polite">
+                    {launchTicketMessage}
+                  </p>
+                )}
+              </div>
+            )}
+
             <button
-              onClick={() => setExamData(null)}
+              onClick={() => {
+                clearTimeout(ticketTimerRef.current);
+                setLaunchTicket(null);
+                setLaunchTicketMessage("");
+                setExamData(null);
+              }}
               className="w-full text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 text-sm font-medium"
             >
               {t("exam.cancelGoBack") || "Cancel and go back"}
