@@ -5,7 +5,7 @@
 //       does its own fetch and was not going through the axios instance / token,
 //       so protected /books/:id/read calls were rejected and showed "Failed to load PDF")
 
-import { useState, useCallback, useEffect, useRef, memo, useMemo } from "react";
+import React, { useState, useCallback, useEffect, useRef, memo, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import api, { getAccessToken } from "@/api/client";
@@ -508,6 +508,7 @@ const BookReader = () => {
   const [numPages, setNumPages] = useState(null);
   const [pageNumber, setPageNumber] = useState(1);
   const [scale, setScale] = useState(2.1);
+  const [fitToWidth, setFitToWidth] = useState(true);
   const [pdfError, setPdfError] = useState(false);
   const [selectedText, setSelectedText] = useState("");
   const [showSidebar, setShowSidebar] = useState(false); // closed on open — immersive by default
@@ -523,6 +524,7 @@ const BookReader = () => {
   const [pdfLoadAttempt, setPdfLoadAttempt] = useState(0);
   const [timeStart] = useState(Date.now());
   const [aiExpanded, setAiExpanded] = useState(false);
+  const [showMobileAI, setShowMobileAI] = useState(false);
   const pdfContainerRef = useRef(null);
 
   // Floating top control cluster — hidden by default, revealed on mouse
@@ -659,7 +661,7 @@ const BookReader = () => {
         return;
       }
 
-      if (e.key === "Escape") { setShowSettings(false); setShowBmMenu(false); setShowSidebar(false); }
+      if (e.key === "Escape") { setShowSettings(false); setShowBmMenu(false); setShowSidebar(false); setShowMobileAI(false); }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -761,6 +763,48 @@ const BookReader = () => {
     } catch { setToc([]); }
   }, []);
 
+  useEffect(() => {
+    const container = pdfContainerRef.current;
+    if (!pdfRef || !fitToWidth || !container) return undefined;
+
+    let active = true;
+    let resizeObserver;
+    const updateFit = async () => {
+      const page = await pdfRef.getPage(pageNumber);
+      if (!active || !pdfContainerRef.current) return;
+      const currentContainer = pdfContainerRef.current;
+      const style = window.getComputedStyle(currentContainer);
+      const horizontalPadding =
+        Number.parseFloat(style.paddingLeft) + Number.parseFloat(style.paddingRight);
+      const availableWidth = Math.max(1, currentContainer.clientWidth - horizontalPadding - 8);
+      const pageWidth = page.getViewport({ scale: 1 }).width;
+      setScale((currentScale) => {
+        const nextScale = Math.max(0.25, Math.min(2.1, availableWidth / pageWidth));
+        return Math.abs(currentScale - nextScale) < 0.01 ? currentScale : nextScale;
+      });
+    };
+
+    void updateFit().catch((error) => {
+      console.error("Unable to fit the PDF page to the reader.", error);
+    });
+    if (typeof ResizeObserver !== "undefined") {
+      resizeObserver = new ResizeObserver(() => {
+        void updateFit().catch((error) => {
+          console.error("Unable to fit the PDF page to the reader.", error);
+        });
+      });
+      resizeObserver.observe(container);
+    } else {
+      window.addEventListener("resize", updateFit);
+    }
+
+    return () => {
+      active = false;
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", updateFit);
+    };
+  }, [fitToWidth, pageNumber, pdfRef]);
+
   const goTo = useCallback(p => {
     const next = Math.max(1, Math.min(numPages ?? 1, p));
     if (next !== pageNumber) {
@@ -807,7 +851,7 @@ const BookReader = () => {
   );
 
   return (
-    <div style={{
+    <div className="book-reader" style={{
       display: "flex", flexDirection: "column",
       height: "100vh",
       position: "fixed",
@@ -828,6 +872,57 @@ const BookReader = () => {
         .react-pdf__Page__textContent.textLayer { opacity: 0.4; }
         .toolbar-btn:hover { background: ${T.hover} !important; }
         .page-animate { animation: fadeUp 0.22s ease forwards; }
+        @supports (height: 100dvh) {
+          .book-reader { height: 100dvh; }
+        }
+        @media (max-width: 900px) {
+          .reader-floating-toolbar {
+            top: 8px !important;
+            left: 8px !important;
+            right: 8px !important;
+            gap: 4px !important;
+            opacity: 1 !important;
+            pointer-events: auto !important;
+          }
+          .reader-book-title, .reader-note-indicator { display: none !important; }
+          .reader-pdf-container {
+            padding: 64px 8px 16px !important;
+            touch-action: pan-x pan-y pinch-zoom;
+          }
+          .reader-ai-panel { display: none !important; }
+          .reader-ai-panel-open {
+            display: flex !important;
+            position: fixed !important;
+            inset: 0 0 0 auto !important;
+            width: min(100vw, 420px) !important;
+            height: 100dvh !important;
+            flex: 0 0 min(100vw, 420px) !important;
+            min-width: 0 !important;
+            max-width: 100vw !important;
+            z-index: 45 !important;
+            box-shadow: -12px 0 36px rgba(0,0,0,0.24);
+          }
+          .reader-ai-panel-open .reader-mobile-ai-close { display: flex !important; }
+          .reader-mobile-ai-backdrop { display: block !important; }
+          .reader-bottom-toolbar {
+            display: grid !important;
+            grid-template-areas: "pages assistant" "zoom progress";
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 4px 8px;
+            height: auto !important;
+            min-height: 88px;
+            padding: 6px 8px calc(6px + env(safe-area-inset-bottom)) !important;
+          }
+          .reader-zoom-controls { grid-area: zoom; gap: 2px !important; }
+          .reader-page-controls { grid-area: pages; justify-content: flex-start !important; gap: 4px !important; }
+          .reader-page-number { gap: 3px !important; padding: 4px 6px !important; }
+          .reader-keyboard-hint, .reader-time-left { display: none !important; }
+          .reader-progress-controls { grid-area: progress; justify-self: end; }
+          .reader-mobile-ai-button { display: flex !important; grid-area: assistant; }
+        }
+        @media (max-width: 380px) {
+          .reader-listen-button { display: none !important; }
+        }
       `}</style>
 
       {devToolsOpen && <DevToolsWarning T={T} />}
@@ -835,6 +930,7 @@ const BookReader = () => {
       {/* ── FLOATING TOP CONTROLS — no header bar, hidden until the mouse
           approaches the top edge, auto-hides again a moment later ── */}
       <div
+        className="reader-floating-toolbar"
         style={{
           position: "absolute", top: topVisible ? "14px" : "-64px", left: "14px", right: aiExpanded ? "calc(42vw + 14px)" : "calc(25vw + 14px)",
           display: "flex", alignItems: "center", gap: "10px",
@@ -844,20 +940,21 @@ const BookReader = () => {
           pointerEvents: topVisible ? "auto" : "none",
         }}
       >
-        <div style={{
+        <div className="reader-toolbar-actions" style={{
           display: "flex", alignItems: "center", gap: "6px",
           background: T.toolbar, border: `1px solid ${T.toolbarBorder}`,
           borderRadius: "14px", padding: "6px", boxShadow: T.shadow,
         }}>
-          <button className="bg-[#2C2DE0] text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150 group" onClick={() => navigate(-1)} style={{ ...toolBtn(), width: "30px", height: "30px" }}>
+          <button aria-label="Go back" title="Go back" className="bg-[#2C2DE0] text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150 group" onClick={() => navigate(-1)} style={{ ...toolBtn(), width: "30px", height: "30px" }}>
             <ArrowLeft size={14} />
           </button>
           <div style={{ width: "1px", height: "18px", background: T.toolbarBorder, margin: "0 2px" }} />
-          <button className="bg-[#2C2DE0] text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150 group" onClick={() => setShowSidebar(v => !v)} style={toolBtn(showSidebar)}>
+          <button aria-label={showSidebar ? "Close reading tools" : "Open reading tools"} title={showSidebar ? "Close reading tools" : "Open reading tools"} className="bg-[#2C2DE0] text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150 group" onClick={() => setShowSidebar(v => !v)} style={toolBtn(showSidebar)}>
             <List size={15} />
           </button>
           <button
-            className="bg-[#2C2DE0] text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150 group"
+            aria-label={readingAloud ? "Stop reading aloud" : "Read this page aloud"}
+            className="reader-listen-button bg-[#2C2DE0] text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150 group"
             onClick={toggleReadAloud}
             title={readingAloud ? "Stop reading" : "Listen to this page"}
             style={toolBtn(readingAloud)}
@@ -869,7 +966,7 @@ const BookReader = () => {
         </div>
 
         {/* Book title chip */}
-        <div style={{
+        <div className="reader-book-title" style={{
           display: "flex", alignItems: "center", gap: "5px", overflow: "hidden",
           background: T.toolbar, border: `1px solid ${T.toolbarBorder}`,
           borderRadius: "14px", padding: "8px 16px", boxShadow: T.shadow,
@@ -889,21 +986,21 @@ const BookReader = () => {
 
         {/* Note indicator */}
         {notes[pageNumber] && (
-          <div style={{ display: "flex", alignItems: "center", gap: "4px", padding: "8px 12px", borderRadius: "14px", background: T.accentBg, border: `1px solid ${T.accent}30`, boxShadow: T.shadow }}>
+          <div className="reader-note-indicator" style={{ display: "flex", alignItems: "center", gap: "4px", padding: "8px 12px", borderRadius: "14px", background: T.accentBg, border: `1px solid ${T.accent}30`, boxShadow: T.shadow }}>
             <FileText size={11} color={T.accent} />
             <span style={{ fontSize: "10px", fontWeight: 700, color: T.accent, letterSpacing: "0.05em" }}>NOTE</span>
           </div>
         )}
 
         {/* Bookmark + Settings cluster */}
-        <div style={{
+        <div className="reader-bookmark-settings" style={{
           display: "flex", alignItems: "center", gap: "6px",
           background: T.toolbar, border: `1px solid ${T.toolbarBorder}`,
           borderRadius: "14px", padding: "6px", boxShadow: T.shadow,
           position: "relative",
         }}>
           <div style={{ position: "relative" }}>
-            <button className="bg-[#2C2DE0] text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150 group" onClick={() => { setShowBmMenu(v => !v); setShowSettings(false); }} style={toolBtn(isBookmarked || showBmMenu)}>
+            <button aria-label="Bookmarks" title="Bookmarks" className="bg-[#2C2DE0] text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150 group" onClick={() => { setShowBmMenu(v => !v); setShowSettings(false); }} style={toolBtn(isBookmarked || showBmMenu)}>
               {isBookmarked ? <BookmarkCheck size={15} /> : <Bookmark size={15} />}
             </button>
             {showBmMenu && (
@@ -944,11 +1041,11 @@ const BookReader = () => {
           </div>
 
           <div style={{ position: "relative" }}>
-            <button className="bg-[#2C2DE0] text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150 group" onClick={() => { setShowSettings(v => !v); setShowBmMenu(false); }} style={toolBtn(showSettings)}>
+            <button aria-label="Reader settings" title="Reader settings" className="bg-[#2C2DE0] text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150 group" onClick={() => { setShowSettings(v => !v); setShowBmMenu(false); }} style={toolBtn(showSettings)}>
               <Settings size={14} />
             </button>
             {showSettings && (
-              <SettingsPanel T={T} themeId={themeId} setThemeId={setThemeId} scale={scale} setScale={setScale} onClose={() => setShowSettings(false)} />
+              <SettingsPanel T={T} themeId={themeId} setThemeId={setThemeId} scale={scale} setScale={(nextScale) => { setFitToWidth(false); setScale(nextScale); }} onClose={() => setShowSettings(false)} />
             )}
           </div>
         </div>
@@ -966,8 +1063,8 @@ const BookReader = () => {
         />
 
         {/* Center — PDF reading area */}
-        <div ref={pdfContainerRef} style={{
-          flex: "1 1 0%", overflowY: "auto", background: T.pdfBg,
+        <div ref={pdfContainerRef} className="reader-pdf-container" style={{
+          flex: "1 1 0%", minWidth: 0, overflow: "auto", background: T.pdfBg,
           display: "flex", flexDirection: "column", alignItems: "center",
           padding: "36px 24px 48px",
           position: "relative",
@@ -1029,7 +1126,16 @@ const BookReader = () => {
         {/* Right — AI Panel (Library Tutor) — width transitions, never remounts.
             Sized in vw so "maximize" genuinely claims a big, stable share of
             the screen instead of a small fixed pixel column. */}
-        <div style={{
+        {showMobileAI && (
+          <button
+            type="button"
+            aria-label="Close AI tutor"
+            className="reader-mobile-ai-backdrop"
+            onClick={() => setShowMobileAI(false)}
+            style={{ display: "none", position: "fixed", inset: 0, zIndex: 44, border: 0, background: "rgba(0,0,0,0.35)" }}
+          />
+        )}
+        <div className={showMobileAI ? "reader-ai-panel reader-ai-panel-open" : "reader-ai-panel"} style={{
           flex: aiExpanded ? "0 0 42vw" : "0 0 25vw",
           minWidth: aiExpanded ? "460px" : "300px",
           maxWidth: aiExpanded ? "760px" : "400px",
@@ -1037,6 +1143,17 @@ const BookReader = () => {
           borderLeft: `1px solid ${T.aiPanelBorder}`,
           transition: "flex-basis 0.25s cubic-bezier(0.16,1,0.3,1), min-width 0.25s ease, max-width 0.25s ease",
         }}>
+          {showMobileAI && (
+            <button
+              type="button"
+              aria-label="Close AI tutor"
+              className="reader-mobile-ai-close"
+              onClick={() => setShowMobileAI(false)}
+              style={{ display: "none", alignItems: "center", justifyContent: "center", alignSelf: "flex-end", width: "36px", height: "36px", margin: "8px", border: `1px solid ${T.border}`, borderRadius: "9px", background: T.surface, color: T.text, cursor: "pointer", flexShrink: 0 }}
+            >
+              <X size={16} />
+            </button>
+          )}
           <AIPanel
             bookTitle={book.title}
             currentPage={pageNumber}
@@ -1053,29 +1170,29 @@ const BookReader = () => {
       </div>
 
       {/* ── BOTTOM TOOLBAR — always visible: page nav, zoom, progress ── */}
-      <div style={{
+      <div className="reader-bottom-toolbar" style={{
         display: "flex", alignItems: "center", justifyContent: "space-between",
         padding: "0 18px", height: "50px",
         background: T.toolbar, borderTop: `1px solid ${T.toolbarBorder}`,
         flexShrink: 0,
       }}>
         {/* Zoom */}
-        <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
-          <button className="bg-[#2C2DE0] text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150 group" onClick={() => setScale(s => Math.max(0.6, +(s - 0.15).toFixed(2)))} style={toolBtn(false, true)}><ZoomOut size={13} /></button>
+        <div className="reader-zoom-controls" style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+          <button aria-label="Zoom out" className="bg-[#2C2DE0] text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150 group" onClick={() => { setFitToWidth(false); setScale(s => Math.max(0.6, +(s - 0.15).toFixed(2))); }} style={toolBtn(false, true)}><ZoomOut size={13} /></button>
           <span style={{ fontSize: "11px", fontWeight: 700, color: T.textMuted, minWidth: "40px", textAlign: "center", fontVariantNumeric: "tabular-nums" }}>
             {Math.round(scale * 100)}%
           </span>
-          <button className="bg-[#2C2DE0] text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150 group" onClick={() => setScale(s => Math.min(3.0, +(s + 0.15).toFixed(2)))} style={toolBtn(false, true)}><ZoomIn size={13} /></button>
-          <button className="bg-[#2C2DE0] text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150 group" onClick={() => setScale(2.1)} style={{ ...toolBtn(false, true), marginLeft: "2px" }}><RotateCcw size={11} /></button>
+          <button aria-label="Zoom in" className="bg-[#2C2DE0] text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150 group" onClick={() => { setFitToWidth(false); setScale(s => Math.min(3.0, +(s + 0.15).toFixed(2))); }} style={toolBtn(false, true)}><ZoomIn size={13} /></button>
+          <button aria-label="Fit page to width" title="Fit page to width" className="bg-[#2C2DE0] text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150 group" onClick={() => setFitToWidth(true)} style={{ ...toolBtn(false, true), marginLeft: "2px" }}><RotateCcw size={11} /></button>
         </div>
 
         {/* Page navigation */}
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        <div className="reader-page-controls" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <button className="bg-[#2C2DE0] text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150 group" onClick={() => goTo(pageNumber - 1)} disabled={pageNumber <= 1}
             style={{ ...toolBtn(), opacity: pageNumber <= 1 ? 0.3 : 1, cursor: pageNumber <= 1 ? "not-allowed" : "pointer" }}>
             <ChevronLeft size={16} />
           </button>
-          <div style={{ display: "flex", alignItems: "center", gap: "6px", padding: "6px 14px", background: T.surface, border: `1px solid ${T.border}`, borderRadius: "10px" }}>
+          <div className="reader-page-number" style={{ display: "flex", alignItems: "center", gap: "6px", padding: "6px 14px", background: T.surface, border: `1px solid ${T.border}`, borderRadius: "10px" }}>
             <input type="number" value={pageNumber} min={1} max={numPages ?? 1}
               onChange={e => goTo(Number(e.target.value))}
               style={{ width: "38px", textAlign: "center", background: "transparent", border: "none", outline: "none", fontSize: "13px", fontWeight: 700, color: T.text, fontVariantNumeric: "tabular-nums" }}
@@ -1088,7 +1205,7 @@ const BookReader = () => {
             <ChevronRight size={16} />
           </button>
         </div>
-        <div style={{ display: "flex", alignItems: "center", color: T.textFaint, fontSize: "11px", gap: "4px", letterSpacing: "0.01em" }}>
+        <div className="reader-keyboard-hint" style={{ display: "flex", alignItems: "center", color: T.textFaint, fontSize: "11px", gap: "4px", letterSpacing: "0.01em" }}>
           <span>Use</span>
           <span style={{ fontFamily: "monospace" }}>▲</span>
           <span>or</span>
@@ -1101,9 +1218,9 @@ const BookReader = () => {
         </div>
 
         {/* Stats */}
-        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+        <div className="reader-progress-controls" style={{ display: "flex", alignItems: "center", gap: "12px" }}>
           {timeLeft && (
-            <span style={{ fontSize: "11px", color: T.textMuted, display: "flex", alignItems: "center", gap: "4px" }}>
+            <span className="reader-time-left" style={{ fontSize: "11px", color: T.textMuted, display: "flex", alignItems: "center", gap: "4px" }}>
               <Clock size={11} /> {timeLeft}
             </span>
           )}
@@ -1114,6 +1231,16 @@ const BookReader = () => {
             <span style={{ fontSize: "11px", fontWeight: 800, color: T.accent, fontVariantNumeric: "tabular-nums" }}>{pct}%</span>
           </div>
         </div>
+        <button
+          type="button"
+          aria-label={showMobileAI ? "Close AI tutor" : "Open AI tutor"}
+          aria-expanded={showMobileAI}
+          className="reader-mobile-ai-button"
+          onClick={() => setShowMobileAI((isOpen) => !isOpen)}
+          style={{ ...toolBtn(showMobileAI, true), display: "none" }}
+        >
+          <Sparkles size={14} />
+        </button>
       </div>
     </div>
   );

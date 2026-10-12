@@ -1,9 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { socketMock, handlers } = vi.hoisted(() => {
+const { socketMock, handlers, apiMock } = vi.hoisted(() => {
   const handlers = new Map();
   return {
     handlers,
+    apiMock: {
+      get: vi.fn(),
+      post: vi.fn(),
+    },
     socketMock: {
       connected: true,
       emit: vi.fn(),
@@ -16,15 +20,16 @@ const { socketMock, handlers } = vi.hoisted(() => {
 });
 
 vi.mock("@/socket.js", () => ({ default: socketMock }));
-vi.mock("@/api/client", () => ({ default: {} }));
+vi.mock("@/api/client", () => ({ default: apiMock }));
 
-import { joinChatRoom } from "./chatApi";
+import { joinChatRoom, sendMessage } from "./chatApi";
 
 describe("chat room socket lifecycle", () => {
   beforeEach(() => {
     socketMock.emit.mockClear();
     socketMock.on.mockClear();
     socketMock.off.mockClear();
+    apiMock.post.mockReset();
     handlers.clear();
     socketMock.connected = true;
   });
@@ -39,5 +44,17 @@ describe("chat room socket lifecycle", () => {
     expect(socketMock.emit).toHaveBeenLastCalledWith("chat:join", "conversation-1");
     cleanup();
     expect(handlers.has("connect")).toBe(false);
+  });
+
+  it("sends the expected message body with a stable idempotency key", async () => {
+    apiMock.post.mockResolvedValue({ data: { success: true } });
+
+    await sendMessage("conversation-1", "hello", "retry-key-1");
+
+    expect(apiMock.post).toHaveBeenCalledWith(
+      "/chat/conversation-1/messages",
+      { text: "hello" },
+      { headers: { "Idempotency-Key": "retry-key-1" } }
+    );
   });
 });

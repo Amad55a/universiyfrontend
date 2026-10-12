@@ -15,7 +15,7 @@
 // { bio, skills, photoFile }, extend it to accept and persist these two
 // additional fields (see explanation at the end of the response).
 
-import { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 import useLanguage from "@/hooks/useLanguage";
 import {
@@ -130,6 +130,14 @@ const ProfileSection = ({ user, setUser, isSo }) => {
   const [skillInput, setSkillInput] = useState("");
   const [status, setStatus] = useState({ type: null, msg: null });
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      setDisplayName(user.displayName || user.name || "");
+      setBio(user.bio || "");
+      setSkills(Array.isArray(user.skills) ? user.skills : []);
+    }
+  }, [user]);
 
   const displayPhoto = previewPhoto || resolvePhoto(user?.photo) || null;
 
@@ -298,6 +306,12 @@ const NotificationsSection = ({ initial, isSo }) => {
   const [status, setStatus] = useState({ type: null, msg: null });
   const [saving, setSaving] = useState(false);
 
+  useEffect(() => {
+    if (initial) {
+      setPrefs((p) => ({ ...p, ...initial }));
+    }
+  }, [initial]);
+
   const set = (key) => (val) => setPrefs((p) => ({ ...p, [key]: val }));
 
   const handleSave = async () => {
@@ -352,6 +366,13 @@ const PrivacySection = ({ initial, isSo }) => {
   const [allowMessagesFrom, setAllowMessagesFrom] = useState(initial?.allowMessagesFrom ?? "groups");
   const [status, setStatus] = useState({ type: null, msg: null });
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (initial) {
+      if (initial.showOnlineStatus !== undefined) setShowOnlineStatus(initial.showOnlineStatus);
+      if (initial.allowMessagesFrom !== undefined) setAllowMessagesFrom(initial.allowMessagesFrom);
+    }
+  }, [initial]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -656,19 +677,70 @@ const NAV_ITEMS = [
 ];
 
 const CommunitySettings = () => {
-  const { user, setUser } = useAuth();
+  const { user, setUser, loading: authLoading } = useAuth();
   const { language } = useLanguage();
   const isSo = language === "so";
   const isGoogleUser = !!(user?.googleId || user?.provider === "google");
 
   const [active, setActive] = useState("profile");
   const [remoteSettings, setRemoteSettings] = useState(null);
+  const [settingsLoading, setSettingsLoading] = useState(true);
+  const [settingsError, setSettingsError] = useState(null);
+
+  const fetchSettings = () => {
+    if (!user) return;
+    setSettingsLoading(true);
+    setSettingsError(null);
+    getMySettings()
+      .then((d) => {
+        if (d.success) setRemoteSettings(d.settings ?? null);
+        else setSettingsError(d.message || "Failed to load settings");
+      })
+      .catch((err) => {
+        setSettingsError(err.response?.data?.message || (isSo ? "Lama soo rari karin dejinta." : "Could not load settings from server."));
+      })
+      .finally(() => setSettingsLoading(false));
+  };
 
   useEffect(() => {
-    getMySettings()
-      .then((d) => { if (d.success) setRemoteSettings(d.settings ?? null); })
-      .catch(() => {});
-  }, []);
+    if (user) {
+      fetchSettings();
+    } else if (!authLoading) {
+      setSettingsLoading(false);
+    }
+  }, [user, authLoading]);
+
+  if (authLoading) {
+    return (
+      <div className="w-full flex justify-center items-center py-28">
+        <Loader2 size={32} className="animate-spin text-[#2C2DE0]" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="w-full max-w-md mx-auto py-20 px-4 text-center">
+        <div className="p-8 rounded-2xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-950">
+          <Shield size={44} className="mx-auto text-[#2C2DE0] mb-3" />
+          <h2 className="text-xl font-black text-gray-900 dark:text-white mb-2">
+            {isSo ? "Fadlan soo gal" : "Sign in Required"}
+          </h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-6 leading-relaxed">
+            {isSo
+              ? "Waa inaad akoonkaaga gashaa si aad u maamusho dejinta bulshada."
+              : "Please sign in with your university account to access and manage your collaboration settings."}
+          </p>
+          <a
+            href="/login"
+            className="inline-flex items-center justify-center px-6 py-3 rounded-xl bg-[#2C2DE0] text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150"
+          >
+            {isSo ? "Gal Akoonkaaga" : "Sign In to UniCore"}
+          </a>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -705,6 +777,11 @@ const CommunitySettings = () => {
 
       {/* Content */}
       <div className="flex-1 min-w-0">
+        {settingsError && (
+          <div className="mb-4">
+            <Banner type="error" message={settingsError} />
+          </div>
+        )}
         {active === "profile" && <ProfileSection user={user} setUser={setUser} isSo={isSo} />}
         {active === "notifications" && <NotificationsSection initial={remoteSettings?.notifications} isSo={isSo} />}
         {active === "privacy" && <PrivacySection initial={remoteSettings?.privacy} isSo={isSo} />}

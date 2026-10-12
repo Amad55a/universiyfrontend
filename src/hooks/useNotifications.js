@@ -19,6 +19,7 @@ import { useState, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import apiClient from "@/api/client";
 import { useNotificationContext, buildResolver } from "../context/Notificationcontext";
+import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/hooks/useLanguage";
 
 // ── API helpers ───────────────────────────────────────────────────────────────
@@ -67,6 +68,7 @@ const normaliseSocketNotif = (data) => ({
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
 export const useNotifications = () => {
+  const { user, loading: authLoading } = useAuth();
   const { t } = useLanguage();
   const ctx   = useNotificationContext();
 
@@ -79,11 +81,13 @@ export const useNotifications = () => {
   const queryClient = useQueryClient();
   const [activeFilter, setActiveFilter] = useState("all");
   const [page, setPage] = useState(1);
+  const userId = user?._id ?? user?.id;
+  const enabled = Boolean(userId && !authLoading);
   const LIMIT = 20;
 
-  const queryKey = ["notifications", activeFilter, page];
+  const queryKey = ["notifications", userId, activeFilter, page];
 
-  const { data, isLoading } = useQuery({
+  const notificationsQuery = useQuery({
     queryKey,
     queryFn: () =>
       api.getNotifications({
@@ -91,34 +95,38 @@ export const useNotifications = () => {
         limit: LIMIT,
         type:  activeFilter === "all" ? undefined : activeFilter,
       }),
+    enabled,
     keepPreviousData: true,
   });
 
-  const { data: countData } = useQuery({
-    queryKey:       ["notifications", "unreadCount"],
+  const countQuery = useQuery({
+    queryKey:       ["notifications", userId, "unreadCount"],
     queryFn:        api.getUnreadCount,
-    refetchInterval: 60_000,
+    enabled,
+    refetchInterval: enabled ? 60_000 : false,
   });
 
   // Socket updates are handled centrally by socket/listeners.js via SocketSyncProvider.
+  const invalidateUserNotifications = () =>
+    queryClient.invalidateQueries({ queryKey: ["notifications", userId] });
   const { mutate: markAsRead } = useMutation({
     mutationFn: api.markRead,
-    onSuccess:  () => queryClient.invalidateQueries({ queryKey: ["notifications"] }),
+    onSuccess:  invalidateUserNotifications,
   });
 
   const { mutate: markAllAsRead } = useMutation({
     mutationFn: api.markAllRead,
-    onSuccess:  () => queryClient.invalidateQueries({ queryKey: ["notifications"] }),
+    onSuccess:  invalidateUserNotifications,
   });
 
   const { mutate: dismiss } = useMutation({
     mutationFn: api.dismiss,
-    onSuccess:  () => queryClient.invalidateQueries({ queryKey: ["notifications"] }),
+    onSuccess:  invalidateUserNotifications,
   });
 
   const { mutate: clearAll } = useMutation({
     mutationFn: api.clearAll,
-    onSuccess:  () => queryClient.invalidateQueries({ queryKey: ["notifications"] }),
+    onSuccess:  invalidateUserNotifications,
   });
 
   const changeFilter = useCallback((filter) => {
@@ -128,18 +136,25 @@ export const useNotifications = () => {
 
   const loadMore = useCallback(() => setPage((p) => p + 1), []);
 
+  const data = notificationsQuery.data;
+  const countData = countQuery.data;
   const notifications = data?.notifications ?? [];
   const unreadCount   = countData?.count ?? data?.unreadCount ?? 0;
   const hasMore       = data
-    ? notifications.length < (data.pagination?.total ?? 0)
+    ? data.pagination?.hasMore ?? notifications.length < (data.pagination?.total ?? 0)
     : false;
 
   return {
     notifications,
     unreadCount,
-    loading:     isLoading,
+    loading:     enabled && notificationsQuery.isLoading,
     loadingMore: false,
     hasMore,
+    error: notificationsQuery.error,
+    countLoading: enabled && countQuery.isLoading,
+    countError: countQuery.error,
+    refreshUnreadCount: countQuery.refetch,
+    refreshNotifications: notificationsQuery.refetch,
     activeFilter,
     changeFilter,
     markAsRead,

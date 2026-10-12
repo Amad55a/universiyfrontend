@@ -46,7 +46,7 @@ const UserProfile = () => {
   const [photoPreview, setPhotoPreview] = useState(null);
   const [saving, setSaving] = useState(false);
 
-  const isSelf = currentUser && String(id) === String(currentUser._id);
+  const isSelf = currentUser && (String(id) === String(currentUser._id) || String(id) === String(currentUser.id));
 
   useEffect(() => {
     let active = true;

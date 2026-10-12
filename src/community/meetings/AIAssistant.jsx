@@ -59,7 +59,9 @@ export function AIAssistant({ meetingTitle, course, onClose }) {
   const chatEndRef = useRef(null);
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (typeof chatEndRef.current?.scrollIntoView === "function") {
+      chatEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages.length, loading]);
 
   const sendMessage = async (userText) => {
@@ -114,8 +116,12 @@ Be concise, friendly, and academically accurate. Format responses with markdown 
             <p className="text-white text-xs font-bold">Unicore Ai</p>
           </div>
         </div>
-        <button onClick={clearChat} title="Clear chat" className="bg-[#2C2DE0] text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150 group">
-          <RefreshCw size={12} />
+        <button
+          onClick={clearChat}
+          title="Clear chat"
+          className="p-1.5 rounded-lg text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+        >
+          <RefreshCw size={13} />
         </button>
       </div>
 
@@ -124,7 +130,7 @@ Be concise, friendly, and academically accurate. Format responses with markdown 
         <p className="text-[9px] font-black text-white/40 uppercase tracking-widest mb-1.5 px-1">Quick actions</p>
         <div className="grid grid-cols-1 gap-1">
           {QUICK_ACTIONS.map((a) => (
-            <button className="bg-[#2C2DE0] text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150 group"
+            <button
               key={a.id}
               onClick={() => sendMessage(a.prompt)}
               disabled={loading}
@@ -138,7 +144,7 @@ Be concise, friendly, and academically accurate. Format responses with markdown 
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-3 bg-black">
+      <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3 bg-black">
         {messages.map((m, i) => <ChatBubble key={i} msg={m} />)}
         {loading && (
           <div className="flex gap-2">
@@ -159,7 +165,7 @@ Be concise, friendly, and academically accurate. Format responses with markdown 
           onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
           placeholder="Ask anything about this class…"
           disabled={loading}
-          className="flex-1 px-3 py-2 rounded-xl bg-gray-900 border border-white/20 text-white text-xs placeholder:text-white/40 caret-white focus:outline-none focus:ring-1 focus:ring-[#2C2DE0] focus:border-[#2C2DE0] disabled:opacity-50"
+          className="flex-1 min-w-0 px-3 py-2 rounded-xl bg-gray-900 border border-white/20 text-white text-xs placeholder:text-white/40 caret-white focus:outline-none focus:ring-1 focus:ring-[#2C2DE0] focus:border-[#2C2DE0] disabled:opacity-50"
         />
         <button
           onClick={() => sendMessage()}

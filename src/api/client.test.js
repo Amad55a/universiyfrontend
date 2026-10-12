@@ -143,4 +143,88 @@ describe("api client URL normalization", () => {
     ]);
     expect(adapter.mock.calls.every(([config]) => config.withCredentials)).toBe(true);
   });
+
+  it("shares one refresh operation across concurrent expired requests", async () => {
+    let refreshAttempts = 0;
+    const protectedAttempts = new Map();
+    const adapter = vi.fn(async (config) => {
+      if (config.url === "/api/v1/auth/refresh-token") {
+        refreshAttempts += 1;
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        return {
+          data: { data: { accessToken: "shared-refreshed-token" } },
+          status: 200,
+          statusText: "OK",
+          headers: {},
+          config,
+        };
+      }
+
+      const resource = config.url;
+      const attempts = (protectedAttempts.get(resource) || 0) + 1;
+      protectedAttempts.set(resource, attempts);
+      if (attempts === 1) {
+        return Promise.reject({ config, response: { status: 401, config } });
+      }
+
+      return { data: { resource }, status: 200, statusText: "OK", headers: {}, config };
+    });
+    api.defaults.adapter = adapter;
+
+    const responses = await Promise.all([
+      api.get("/private/one"),
+      api.get("/private/two"),
+    ]);
+
+    expect(responses.map(({ data }) => data.resource)).toEqual([
+      "/api/v1/private/one",
+      "/api/v1/private/two",
+    ]);
+    expect(refreshAttempts).toBe(1);
+    expect([...protectedAttempts.values()]).toEqual([2, 2]);
+  });
+
+  it("does not retry protected requests when refresh returns no access token", async () => {
+    let protectedAttempts = 0;
+    let refreshAttempts = 0;
+    const adapter = vi.fn(async (config) => {
+      if (config.url === "/api/v1/auth/refresh-token") {
+        refreshAttempts += 1;
+        return { data: {}, status: 200, statusText: "OK", headers: {}, config };
+      }
+
+      protectedAttempts += 1;
+      return Promise.reject({ config, response: { status: 401, config } });
+    });
+    api.defaults.adapter = adapter;
+
+    await expect(api.get("/private/resource")).rejects.toThrow(
+      "Session refresh returned no access token."
+    );
+
+    expect(refreshAttempts).toBe(1);
+    expect(protectedAttempts).toBe(1);
+  });
+
+  it("does not retry an expired session after the refresh cookie is rejected", async () => {
+    let protectedAttempts = 0;
+    let refreshAttempts = 0;
+    const adapter = vi.fn(async (config) => {
+      if (config.url === "/api/v1/auth/refresh-token") {
+        refreshAttempts += 1;
+        return Promise.reject({ config, response: { status: 401, config } });
+      }
+
+      protectedAttempts += 1;
+      return Promise.reject({ config, response: { status: 401, config } });
+    });
+    api.defaults.adapter = adapter;
+
+    await expect(api.get("/private/resource")).rejects.toMatchObject({
+      response: { status: 401 },
+    });
+
+    expect(refreshAttempts).toBe(1);
+    expect(protectedAttempts).toBe(1);
+  });
 });

@@ -21,7 +21,7 @@ const socketOptions = {
   path:            "/socket.io",
   withCredentials: true,
   transports:      ["websocket", "polling"],
-  autoConnect:     Boolean(SOCKET_URL),
+  autoConnect:     false,
 };
 
 const socket = SOCKET_URL ? io(SOCKET_URL, socketOptions) : io(socketOptions);

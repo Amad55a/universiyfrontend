@@ -185,7 +185,7 @@ export function ChatPanel({ meeting, currentUserId }) {
       )}
 
       {/* Messages stream */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-3 scroll-smooth">
+      <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3 scroll-smooth">
         {loading ? (
           <div className="flex justify-center py-8">
             <div className="w-5 h-5 border-2 border-[#2C2DE0] border-t-transparent rounded-full animate-spin" />
@@ -248,7 +248,7 @@ export function ChatPanel({ meeting, currentUserId }) {
         </div>
 
         {/* Textarea + send */}
-        <div className="flex gap-2">
+        <div className="flex min-w-0 gap-2">
           <textarea
             ref={inputRef}
             value={text}
@@ -256,7 +256,7 @@ export function ChatPanel({ meeting, currentUserId }) {
             onKeyDown={handleKeyDown}
             placeholder="Send a message… (Enter to send, Shift+Enter for new line)"
             rows={2}
-            className="flex-1 px-3 py-2 rounded-xl bg-gray-100 dark:bg-white/10 text-gray-950 dark:text-white text-xs placeholder:text-gray-400 dark:placeholder:text-white/30 focus:outline-none focus:ring-1 focus:ring-[#2C2DE0]/50 resize-none leading-relaxed border border-gray-200 dark:border-white/10"
+            className="flex-1 min-w-0 px-3 py-2 rounded-xl bg-gray-100 dark:bg-white/10 text-gray-950 dark:text-white text-xs placeholder:text-gray-400 dark:placeholder:text-white/30 focus:outline-none focus:ring-1 focus:ring-[#2C2DE0]/50 resize-none leading-relaxed border border-gray-200 dark:border-white/10"
           />
           <button
             onClick={handleSend}

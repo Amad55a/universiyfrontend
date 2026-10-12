@@ -45,6 +45,11 @@ export const setAccessToken = (token) => {
   } else {
     delete api.defaults.headers.common["Authorization"];
   }
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("unicores:auth-token-changed", {
+      detail: { authenticated: Boolean(token) },
+    }));
+  }
 };
 
 export const getAccessToken = () => inMemoryAccessToken;
@@ -113,6 +118,9 @@ api.interceptors.response.use(
       try {
         const { data } = await api.post("/auth/refresh-token", {}, { withCredentials: true });
         const newToken = data?.data?.accessToken || data?.accessToken;
+        if (typeof newToken !== "string" || !newToken) {
+          throw new Error("Session refresh returned no access token.");
+        }
         if (newToken) {
           setAccessToken(newToken);
           originalRequest.headers["Authorization"] = `Bearer ${newToken}`;

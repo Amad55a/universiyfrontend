@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Send, MessageCircle } from "lucide-react";
+import { ArrowLeft, Send, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/hooks/useLanguage";
@@ -26,6 +26,7 @@ const Chats = () => {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const endRef = useRef(null);
+  const pendingMessageRef = useRef(null);
 
   const active = conversations.find((c) => c._id === activeId);
 
@@ -33,7 +34,9 @@ const Chats = () => {
     try {
       const data = await listConversations("private");
       if (data.success) setConversations(data.conversations ?? []);
-    } catch { /* ignore */ }
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Could not load conversations");
+    }
     finally { setLoading(false); }
   }, []);
 
@@ -48,7 +51,7 @@ const Chats = () => {
     const stopRejoining = joinChatRoom(activeId);
     getMessages(activeId)
       .then((d) => { if (d.success) setMessages(d.messages ?? []); })
-      .catch(() => toast.error("Could not load messages"));
+      .catch((err) => toast.error(err.response?.data?.message || "Could not load messages"));
     return stopRejoining;
   }, [activeId]);
 
@@ -70,19 +73,27 @@ const Chats = () => {
 
   const handleSend = async () => {
     if (!text.trim() || !activeId || sending) return;
+    const messageText = text.trim();
+    if (pendingMessageRef.current?.text !== messageText) {
+      pendingMessageRef.current = {
+        text: messageText,
+        key: globalThis.crypto.randomUUID(),
+      };
+    }
     setSending(true);
     try {
-      const data = await apiSendMessage(activeId, text.trim());
+      const data = await apiSendMessage(activeId, messageText, pendingMessageRef.current.key);
       if (data.success) {
         setMessages((prev) => {
           if (prev.some((m) => m._id === data.message._id)) return prev;
           return [...prev, data.message];
         });
+        pendingMessageRef.current = null;
         setText("");
         loadConversations();
       }
-    } catch {
-      toast.error("Failed to send");
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Message could not be sent. Please retry.");
     } finally {
       setSending(false);
     }
@@ -92,11 +103,11 @@ const Chats = () => {
 
   return (
     <div
-      className="w-full flex flex-1 min-h-0 h-[calc(100vh-3.5rem)] bg-white dark:bg-gray-950"
+      className="w-full min-w-0 flex flex-1 min-h-0 h-[calc(100dvh-3.5rem)] overflow-hidden bg-white dark:bg-gray-950"
       style={{ fontFamily: "'Geist Variable', 'Inter', sans-serif" }}
     >
       {/* Chat list — fixed width like Messenger */}
-      <aside className="w-full sm:w-72 lg:w-80 shrink-0 border-r border-gray-100 dark:border-gray-800 flex flex-col bg-gray-50/80 dark:bg-black/50">
+      <aside className={`${activeId ? "hidden sm:flex" : "flex"} w-full sm:w-72 lg:w-80 min-w-0 shrink-0 border-r border-gray-100 dark:border-gray-800 flex-col bg-gray-50/80 dark:bg-black/50`}>
         <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800">
           <h2 className="text-sm font-black text-gray-900 dark:text-white">Private messages</h2>
           <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">Only private one-to-one chats are shown here.</p>
@@ -131,7 +142,7 @@ const Chats = () => {
       </aside>
 
       {/* Conversation — fills all remaining width beside community left sidebar */}
-      <div className="hidden sm:flex flex-1 flex-col min-w-0 bg-white dark:bg-gray-950">
+      <div className={`${activeId ? "flex" : "hidden"} sm:flex flex-1 flex-col min-w-0 bg-white dark:bg-gray-950`}>
         {!active ? (
           <div className="flex-1 flex flex-col items-center justify-center text-center px-8">
             <div className="w-16 h-16 rounded-2xl bg-[#2C2DE0] dark:bg-[#2C2DE0]/30 flex items-center justify-center mb-4">
@@ -144,7 +155,15 @@ const Chats = () => {
           </div>
         ) : (
           <>
-            <div className="px-5 py-3.5 border-b border-gray-100 dark:border-gray-800 flex items-center gap-3 bg-white/80 dark:bg-gray-950/80 backdrop-blur-sm">
+            <div className="px-3 sm:px-5 py-3.5 border-b border-gray-100 dark:border-gray-800 flex items-center gap-3 bg-white/80 dark:bg-gray-950/80 backdrop-blur-sm">
+              <button
+                type="button"
+                onClick={() => setSearchParams({})}
+                className="sm:hidden shrink-0 p-2 -ml-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                aria-label="Back to conversations"
+              >
+                <ArrowLeft size={18} />
+              </button>
               <Avatar name={active.displayName} photo={active.displayPhoto} size={36} />
               <div>
                 <p className="text-sm font-bold text-gray-900 dark:text-white">{active.displayName ?? active.name}</p>
@@ -152,7 +171,7 @@ const Chats = () => {
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto px-4 lg:px-8 py-4 space-y-3 bg-gray-50 dark:bg-black/30">
+            <div className="flex-1 min-h-0 overflow-y-auto px-3 sm:px-4 lg:px-8 py-4 space-y-3 bg-gray-50 dark:bg-black/30">
               {messages.map((msg) => {
                 const isMine = String(msg.sender?._id ?? msg.sender) === String(user?._id);
                 return (
@@ -162,12 +181,13 @@ const Chats = () => {
                         <Avatar name={msg.sender?.name} photo={msg.sender?.photo} size={28} />
                       </div>
                     )}
-                    <div className={`max-w-[70%] ${isMine ? "items-end" : "items-start"} flex flex-col`}>
+                    <div className={`min-w-0 max-w-[85%] sm:max-w-[70%] ${isMine ? "items-end" : "items-start"} flex flex-col`}>
                       <div
                         className={`px-4 py-2.5 text-sm leading-relaxed shadow-sm ${isMine
                           ? "bg-[#2C2DE0] text-white rounded-2xl rounded-br-sm"
                           : "bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 rounded-2xl rounded-bl-sm"
                           }`}
+                      style={{ overflowWrap: "anywhere" }}
                       >
                         {msg.text}
                       </div>
@@ -178,17 +198,22 @@ const Chats = () => {
               <div ref={endRef} />
             </div>
 
-            <div className="px-4 py-3 border-t border-gray-100 dark:border-gray-800 flex gap-2 bg-white dark:bg-gray-950">
+            <div
+              className="shrink-0 px-3 sm:px-4 py-3 border-t border-gray-100 dark:border-gray-800 flex gap-2 bg-white dark:bg-gray-950"
+              style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
+            >
               <input
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && (e.preventDefault(), handleSend())}
                 placeholder={t["chat.placeholder"] ?? "Type a message…"}
-                className="flex-1 px-4 py-3 rounded-2xl text-sm bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#2C2DE0]/30"
+                aria-label="Message"
+                className="flex-1 min-w-0 px-3 sm:px-4 py-3 rounded-2xl text-sm bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#2C2DE0]/30"
               />
               <button
                 onClick={handleSend}
                 disabled={!text.trim() || sending}
+                aria-label="Send message"
                 className="p-3 rounded-2xl  bg-[#2C2DE0]
     text-white
     text-sm

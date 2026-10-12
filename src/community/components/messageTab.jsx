@@ -85,14 +85,14 @@ const AnnouncementComposer = ({ groupId, onSent }) => {
                 autoFocus
             />
             <RichTextHints />
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {Object.keys(LINK_ICONS).map((key) => (
                     <input
                         key={key}
                         value={links[key]}
                         onChange={(e) => setLinks((l) => ({ ...l, [key]: e.target.value }))}
                         placeholder={LINK_ICONS[key].label + " URL (optional)"}
-                        className="p-2 rounded-lg text-xs bg-black/5 dark:bg-white/5 text-black dark:text-white focus:outline-none"
+                        className="min-w-0 p-2 rounded-lg text-xs bg-black/5 dark:bg-white/5 text-black dark:text-white focus:outline-none"
                     />
                 ))}
             </div>
