@@ -8,6 +8,7 @@ import MainContentArea from "../components/MaincontentArea";
 import { getReservationMeta } from "@/api/reservation";
 import { getDashboardStats } from "@/api/dashboard";
 import NotificationWelcomeModal from "@/components/NotificationWelcomeModal";
+import StudentExamList from "./StudentExamList";
 
 function useDashboardData() {
   const { data, isLoading } = useQuery({
@@ -69,6 +70,7 @@ const DashboardPage = () => {
               fetchServerTime={fetchServerTime}
               initialServerTime={reservationMeta?.serverTime}
             />
+            <StudentExamList />
             <ProgressStrip stats={data.stats} />
             <QuickActions />
           </>
