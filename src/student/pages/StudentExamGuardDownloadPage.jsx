@@ -94,7 +94,7 @@ export default function StudentExamGuardDownloadPage() {
             <li>Download the official UniCORE Desktop Exam App installer when it is published.</li>
             <li>Install the desktop app using your operating system’s installer prompts.</li>
             <li>Return to your exam page and select <strong>Open UniCORE Exam App</strong>.</li>
-            <li>If the browser asks for permission, allow the app launch and retry. A fresh single-use launch code is issued for each deliberate retry.</li>
+            <li>If the browser asks for permission, allow the app launch and retry. If it still does not open, copy the current one-time ticket from the exam page and manually paste it into ExamGuard to verify it. Request a fresh ticket if it expired or was already used.</li>
           </ol>
           <h2 className="pt-3 font-semibold text-gray-900 dark:text-white">System requirements</h2>
           <p>No platform installer has been published yet. Linux x86_64 is the only configured build target; Windows and macOS installers are not available. Linux AppImage packages may require FUSE or extraction support. The release page will list only tested, published installers.</p>

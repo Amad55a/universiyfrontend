@@ -18,6 +18,7 @@ const LAUNCH_STEPS = [
   "Sign in to your student account in the UniCORE portal.",
   "Open the exam details page. Only exams for which the server confirms your eligibility can be launched.",
   "Choose Open UniCORE Exam App. The portal requests a short-lived, single-use ticket and passes it to the desktop app.",
+  "If the app does not appear, copy the one-time ticket displayed on the exam page, open the installed app, paste the ticket, and select Verify Invitation. Do not reuse an expired or consumed ticket.",
   "The server validates the ticket and exam eligibility. Exam timing, saved answers, and submission are managed by UniCORE.",
 ];
 
