@@ -72,7 +72,7 @@ import StudentExamPortal from './student/pages/StudentExamPortal';
 import StudentExamDetailsPage from './student/pages/StudentExamDetailsPage';
 import StudentExamGuardDownloadPage from './student/pages/StudentExamGuardDownloadPage';
 import DesktopExamAppPage from './FrontDoorSystem/pages/DesktopExamAppPage';
-import StudentExamSession from './student/pages/StudentExamSession';
+import ExamGuardOnlyPage from './student/pages/ExamGuardOnlyPage';
 import StudentResultsPage from './student/pages/StudentResultsPage';
 import CommunityLayout from './community/communityLayout';
 import Feed from './community/Feed';
@@ -177,7 +177,7 @@ createRoot(document.getElementById('root')).render(
                                             element={
                                                 <PrivateRouter>
                                                     <RoleRoute role="student">
-                                                        <StudentExamSession />
+                                                        <ExamGuardOnlyPage />
                                                     </RoleRoute>
                                                 </PrivateRouter>
                                             }

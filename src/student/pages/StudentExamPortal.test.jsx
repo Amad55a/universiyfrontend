@@ -83,11 +83,11 @@ describe("ExamGuard launch ticket handoff", () => {
     expect(await screen.findByText(/Ticket copied/)).toBeInTheDocument();
   });
 
-  it("clears the ticket when it expires", async () => {
+  it("refuses to copy a ticket after its expiry", async () => {
     const ticket = "b".repeat(43);
     api.post.mockResolvedValueOnce({ data: { data: validExam } });
     api.post.mockResolvedValueOnce({
-      data: { data: { ticket, expiresAt: new Date(Date.now() + 50).toISOString() } },
+      data: { data: { ticket, expiresAt: new Date(Date.now() + 60_000).toISOString() } },
     });
     renderPortal();
 
@@ -98,13 +98,13 @@ describe("ExamGuard launch ticket handoff", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Open in ExamGuard" }));
     await screen.findByLabelText("One-time ExamGuard ticket");
 
-    await waitFor(() => {
-      expect(screen.queryByLabelText("One-time ExamGuard ticket")).not.toBeInTheDocument();
-      expect(screen.getByText(/ticket expired/i)).toBeInTheDocument();
-    });
+    vi.setSystemTime(new Date(Date.now() + 61_000));
+    fireEvent.click(screen.getByRole("button", { name: "Copy ticket" }));
+    expect(screen.queryByLabelText("One-time ExamGuard ticket")).not.toBeInTheDocument();
+    expect(screen.getByText(/ticket expired/i)).toBeInTheDocument();
   });
 
-  it("does not offer ExamGuard tickets for an SEB-required exam", async () => {
+  it("offers only the desktop-app handoff and no browser exam start", async () => {
     const sebExam = {
       ...validExam,
       security: { sebRequired: true },
@@ -117,8 +117,9 @@ describe("ExamGuard launch ticket handoff", () => {
     });
     fireEvent.submit(screen.getByRole("button", { name: "exam.verifyToken" }).closest("form"));
 
-    expect(await screen.findByRole("button", { name: "Start Secure Exam" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Open in ExamGuard" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Open in ExamGuard" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /start your exam/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/not OS-level lockdown/i)).toBeInTheDocument();
     expect(api.post).toHaveBeenCalledTimes(1);
   });
 });
