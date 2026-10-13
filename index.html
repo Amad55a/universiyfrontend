@@ -1,49 +1,83 @@
 <!doctype html>
 <html lang="en">
   <head>
-     <meta charset="UTF-8" />
+    <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-    <title>UniCORE - Uniso Academic Digital Ecosystem</title>
-    <meta name="description" content="UniCORE is an academic digital ecosystem — AI-powered platform for students and universities." />
+    <!-- Primary meta — overridden per-page by react-helmet-async -->
+    <title>UniCORE | University Management &amp; Online Exam Platform</title>
+    <meta
+      name="description"
+      content="UniCORE connects students, teachers, and administrators in one platform: secure online exams, digital library, learning resources, and an AI study assistant."
+    />
+    <meta name="robots" content="index, follow" />
 
-    <!-- Open Graph (social sharing) -->
-    <meta property="og:title" content="UniCORE - Academic Digital Ecosystem" />
-    <meta property="og:description" content="AI-powered academic platform for students and universities." />
+    <!-- Open Graph — overridden per-page by react-helmet-async -->
+    <meta property="og:title" content="UniCORE | University Management &amp; Online Exam Platform" />
+    <meta
+      property="og:description"
+      content="UniCORE connects students, teachers, and administrators in one platform: secure online exams, digital library, learning resources, and an AI study assistant."
+    />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://www.unicores.tech" />
-    <meta property="og:image" content="https://www.unicores.tech/og-image.png" />
+    <!-- TODO: add public/og-image.png (1200×630) and uncomment the line below -->
+    <!-- <meta property="og:image" content="https://www.unicores.tech/og-image.png" /> -->
 
-    <!-- Twitter -->
+    <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="UniCORE - Academic Digital Ecosystem" />
-    <meta name="twitter:description" content="AI-powered academic platform for students and universities." />
-    <meta name="twitter:image" content="https://www.unicores.tech/og-image.png" />
+    <meta name="twitter:title" content="UniCORE | University Management &amp; Online Exam Platform" />
+    <meta
+      name="twitter:description"
+      content="UniCORE connects students, teachers, and administrators in one platform: secure online exams, digital library, learning resources, and an AI study assistant."
+    />
+    <!-- TODO: uncomment when og-image.png exists -->
+    <!-- <meta name="twitter:image" content="https://www.unicores.tech/og-image.png" /> -->
 
     <link rel="canonical" href="https://www.unicores.tech" />
-    <link rel="icon" type="image/svg+xml" href="./src/assets/images.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="/images/favicon.svg" />
+
+    <!-- Non-blocking Google Fonts (preload trick eliminates render-blocking) -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet" />
+    <link
+      rel="preload"
+      as="style"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+    />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      media="print"
+      onload="this.media='all'"
+    />
+    <noscript>
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      />
+    </noscript>
+
+    <!-- Inline theme script: runs before first paint to avoid flash -->
     <script>
       (function () {
         try {
           var storedTheme = localStorage.getItem("uniso-theme");
           var prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-          var theme = storedTheme === "dark" || storedTheme === "light"
-            ? storedTheme
-            : prefersDark ? "dark" : "light";
+          var theme =
+            storedTheme === "dark" || storedTheme === "light"
+              ? storedTheme
+              : prefersDark
+              ? "dark"
+              : "light";
           document.documentElement.classList.toggle("dark", theme === "dark");
           document.documentElement.style.colorScheme = theme;
         } catch (_) {}
       })();
     </script>
-<title>UNICORE – Uniso Academic Digital Ecosystem</title>
-
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
+

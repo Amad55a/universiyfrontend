@@ -1,8 +1,167 @@
 {
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
+      ]
+    },
+    {
+      "source": "/assets/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "source": "/images/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=86400" }
+      ]
+    },
+    {
+      "source": "/dashboard(.*)",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" },
+        { "key": "Cache-Control", "value": "no-store" }
+      ]
+    },
+    {
+      "source": "/admin(.*)",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" },
+        { "key": "Cache-Control", "value": "no-store" }
+      ]
+    },
+    {
+      "source": "/teacher(.*)",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" },
+        { "key": "Cache-Control", "value": "no-store" }
+      ]
+    },
+    {
+      "source": "/community(.*)",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" },
+        { "key": "Cache-Control", "value": "no-store" }
+      ]
+    },
+    {
+      "source": "/exam-session(.*)",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" },
+        { "key": "Cache-Control", "value": "no-store" }
+      ]
+    },
+    {
+      "source": "/exam-portal(.*)",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" },
+        { "key": "Cache-Control", "value": "no-store" }
+      ]
+    },
+    {
+      "source": "/e-library(.*)",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" },
+        { "key": "Cache-Control", "value": "no-store" }
+      ]
+    },
+    {
+      "source": "/results(.*)",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" },
+        { "key": "Cache-Control", "value": "no-store" }
+      ]
+    },
+    {
+      "source": "/login(.*)",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" },
+        { "key": "Cache-Control", "value": "no-store" }
+      ]
+    },
+    {
+      "source": "/verify(.*)",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" },
+        { "key": "Cache-Control", "value": "no-store" }
+      ]
+    },
+    {
+      "source": "/oauth-callback(.*)",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" },
+        { "key": "Cache-Control", "value": "no-store" }
+      ]
+    },
+    {
+      "source": "/my-qr(.*)",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" },
+        { "key": "Cache-Control", "value": "no-store" }
+      ]
+    },
+    {
+      "source": "/examguard/download(.*)",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" },
+        { "key": "Cache-Control", "value": "no-store" }
+      ]
+    },
+    {
+      "source": "/seats(.*)",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" },
+        { "key": "Cache-Control", "value": "no-store" }
+      ]
+    },
+    {
+      "source": "/my-reservations(.*)",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" },
+        { "key": "Cache-Control", "value": "no-store" }
+      ]
+    },
+    {
+      "source": "/notifications(.*)",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" },
+        { "key": "Cache-Control", "value": "no-store" }
+      ]
+    }
+  ],
   "rewrites": [
+    {
+      "source": "/robots.txt",
+      "destination": "/robots.txt"
+    },
+    {
+      "source": "/sitemap.xml",
+      "destination": "/sitemap.xml"
+    },
+    {
+      "source": "/llms.txt",
+      "destination": "/llms.txt"
+    },
+    {
+      "source": "/googlef5dd45dda3bd3f12.html",
+      "destination": "/googlef5dd45dda3bd3f12.html"
+    },
     {
       "source": "/(.*)",
       "destination": "/index.html"
+    }
+  ],
+  "redirects": [
+    {
+      "source": "/desktop-exam-app",
+      "destination": "/examguard",
+      "permanent": true
     }
   ]
 }

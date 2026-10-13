@@ -1,4 +1,61 @@
+# UniCORE — robots.txt
+# https://www.unicores.tech
+
+# ── Default: all crawlers ──────────────────────────────────────────────
 User-agent: *
 Allow: /
+Allow: /about
+Allow: /contact
+Allow: /examguard
+Allow: /pricing
+Allow: /sitemap.xml
+Allow: /robots.txt
+Allow: /llms.txt
 
+# Private app areas — noindex is also set via meta tags and X-Robots-Tag headers
+Disallow: /admin
+Disallow: /api
+Disallow: /exam-session
+Disallow: /dashboard
+Disallow: /teacher
+Disallow: /community
+Disallow: /e-library
+Disallow: /exam-portal
+Disallow: /results
+Disallow: /seats
+Disallow: /my-reservations
+Disallow: /notifications
+Disallow: /verify-code
+Disallow: /verify-university-id
+Disallow: /oauth-callback
+Disallow: /my-qr
+Disallow: /examguard/download
+Disallow: /uploads
+
+# ── AI crawlers — explicitly allowed ──────────────────────────────────
+User-agent: GPTBot
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Claude-Web
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: Applebot-Extended
+Allow: /
+
+# ── Sitemap ────────────────────────────────────────────────────────────
 Sitemap: https://www.unicores.tech/sitemap.xml
