@@ -252,13 +252,6 @@ const LandingHeader = () => {
               </button>
               <AnimatePresence>{megaOpen && <MegaMenu t={t} />}</AnimatePresence>
             </div>
-            <Link
-              to="/desktop-exam-app"
-              aria-current={pathname === "/desktop-exam-app" ? "page" : undefined}
-              className={`px-3.5 py-1.5 rounded-lg text-sm font-medium transition-colors ${pathname === "/desktop-exam-app" ? textActive : textIdle}`}
-            >
-              UniCORE Desktop Exam App
-            </Link>
           </nav>
 
           <div className="flex items-center gap-1.5 sm:gap-2 ml-auto shrink-0">
@@ -393,14 +386,6 @@ const LandingHeader = () => {
                     );
                   })
                 )}
-                <Link
-                  to="/desktop-exam-app"
-                  onClick={() => setMenuOpen(false)}
-                  aria-current={pathname === "/desktop-exam-app" ? "page" : undefined}
-                  className="block px-4 py-3 rounded-xl text-sm font-semibold text-black dark:text-white hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
-                >
-                  UniCORE Desktop Exam App
-                </Link>
               </nav>
 
               <div className="p-4 border-t border-black/10 dark:border-white/10 flex flex-col gap-2">

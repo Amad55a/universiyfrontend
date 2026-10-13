@@ -75,6 +75,51 @@ function McqEditor({ question, index, onUpdate, onUpdateOption }) {
   );
 }
 
+function MultiSelectEditor({ question, index, onUpdate, onUpdateOption }) {
+  const selectedAnswers = Array.isArray(question.answer) ? question.answer : [];
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-neutral-500">Select every option that is correct.</p>
+      {question.options?.map((option, optionIndex) => (
+        <div key={optionIndex} className="flex items-center gap-2">
+          <span className="w-6 text-xs font-medium text-neutral-500">
+            {String.fromCharCode(65 + optionIndex)}.
+          </span>
+          <input
+            type="text"
+            className="flex-1 rounded-lg border p-2 text-sm dark:border-neutral-600 dark:bg-neutral-700"
+            placeholder={`Option ${String.fromCharCode(65 + optionIndex)}`}
+            value={option}
+            onChange={(event) => {
+              const nextOption = event.target.value;
+              onUpdateOption(index, optionIndex, nextOption);
+              if (selectedAnswers.includes(option)) {
+                onUpdate(index, "answer", selectedAnswers.map(
+                  (answer) => answer === option ? nextOption : answer,
+                ));
+              }
+            }}
+          />
+          <input
+            type="checkbox"
+            aria-label={`Correct option ${String.fromCharCode(65 + optionIndex)}`}
+            checked={selectedAnswers.includes(option) && Boolean(option)}
+            onChange={(event) => onUpdate(
+              index,
+              "answer",
+              event.target.checked
+                ? [...selectedAnswers, option]
+                : selectedAnswers.filter((answer) => answer !== option),
+            )}
+            className="h-4 w-4"
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ─── Terminal Lab Editor ──────────────────────────────────────────────────────
 // Real Docker-backed Linux terminal. Teacher can attach a task image (e.g. a
 // diagram or expected-output screenshot) plus optional setup script and
@@ -612,7 +657,9 @@ export default function QuestionEditor({ question, index, onRemove, onUpdate, on
 
   const typeLabel = {
     mcq:             "Multiple Choice",
+    multi_select:    "Multiple Select",
     truefalse:       "True / False",
+    short_answer:    "Short Answer",
     essay:           "Essay",
     lab:             "Coding Lab",
     os_linux:        "Terminal Lab",
@@ -623,7 +670,9 @@ export default function QuestionEditor({ question, index, onRemove, onUpdate, on
 
   const typeColor = {
     mcq:        "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
+    multi_select: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
     truefalse:  "bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300",
+    short_answer: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300",
     essay:      "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300",
     lab:        "bg-[#2C2DE0] text-white dark:bg-[#2C2DE0] dark:text-white",
     os_linux:   "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300",
@@ -727,6 +776,18 @@ export default function QuestionEditor({ question, index, onRemove, onUpdate, on
                 <McqEditor question={question} index={index} onUpdate={onUpdate} onUpdateOption={onUpdateOption} />
               )}
 
+              {question.type === "multi_select" && (
+                <MultiSelectEditor question={question} index={index} onUpdate={onUpdate} onUpdateOption={onUpdateOption} />
+              )}
+
+              {["mcq", "multi_select", "truefalse", "short_answer", "essay"].includes(question.type) && (
+                <ImageUploadField
+                  label="Question image (optional)"
+                  value={question.image || ""}
+                  onChange={(url) => onUpdate(index, "image", url)}
+                />
+              )}
+
               {question.type === "truefalse" && (
                 <div className="flex gap-4">
                   {[true, false].map(val => (
@@ -745,16 +806,16 @@ export default function QuestionEditor({ question, index, onRemove, onUpdate, on
                 </div>
               )}
 
-              {question.type === "essay" && (
+              {["short_answer", "essay"].includes(question.type) && (
                 <div>
                   <label className="block text-sm font-medium mb-1 text-neutral-700 dark:text-neutral-300">
                     Word limit
                   </label>
                   <input
                     type="number"
-                    min="50"
-                    value={question.wordLimit || 500}
-                    onChange={e => onUpdate(index, "wordLimit", parseInt(e.target.value) || 500)}
+                    min="1"
+                    value={question.wordLimit || (question.type === "short_answer" ? 100 : 500)}
+                    onChange={e => onUpdate(index, "wordLimit", parseInt(e.target.value) || (question.type === "short_answer" ? 100 : 500))}
                     className="w-32 border p-2 rounded-lg text-sm dark:bg-neutral-700 dark:border-neutral-600"
                   />
                 </div>

@@ -77,6 +77,7 @@ export default function LinuxLab({ question, examId: examIdProp, onScoreUpdate, 
   const [errorMsg, setErrorMsg] = useState("");
   const [taskResults, setTaskResults] = useState([]);
   const [validating, setValidating] = useState(false);
+  const [restartCount, setRestartCount] = useState(0);
 
   // Keep ref and state in sync with a single helper
   const updateStatus = (val) => {
@@ -157,7 +158,10 @@ export default function LinuxLab({ question, examId: examIdProp, onScoreUpdate, 
           }
         }
 
-        const { data } = await axios.post("/api/labs/terminal/start", { examId });
+        const { data } = await axios.post("/api/labs/terminal/start", {
+          examId,
+          questionId: question?._id,
+        });
         if (!mounted) return;
 
         sessionIdRef.current = data.data.sessionId;
@@ -166,35 +170,26 @@ export default function LinuxLab({ question, examId: examIdProp, onScoreUpdate, 
 
         if (question?.setupScript?.trim()) {
           term.writeln("\x1b[33m[Setup] Running environment setup…\x1b[0m");
-          try {
-            const setupRes = await axios.post("/api/labs/terminal/exec", {
-              sessionId: sessionIdRef.current,
-              command: question.setupScript,
-            });
-            if (setupRes.data.data.output) {
-              term.writeln(setupRes.data.data.output.replace(/\n/g, "\r\n"));
-            }
-            term.writeln("\x1b[32m[Setup] Done.\x1b[0m\r\n");
-          } catch {
-            term.writeln("\x1b[31m[Setup] Warning: setup script failed.\x1b[0m\r\n");
+          const setupRes = await axios.post("/api/labs/terminal/exec", {
+            sessionId: sessionIdRef.current,
+            command: question.setupScript,
+          });
+          if (setupRes.data.data.output) {
+            term.writeln(setupRes.data.data.output.replace(/\n/g, "\r\n"));
           }
+          term.writeln("\x1b[32m[Setup] Done.\x1b[0m\r\n");
         }
 
         // ✅ updateStatus sets both the ref AND React state
+        setErrorMsg("");
         updateStatus("ready");
         prompt(term);
       } catch (err) {
         if (!mounted) return;
         const msg = err.response?.data?.message || err.message || "Failed to start container";
+        setErrorMsg(msg);
         term.writeln(`\r\n\x1b[31m✗ ${msg}\x1b[0m`);
-        term.writeln(
-          "\x1b[33mFalling back to simulated mode (commands won't run on server).\x1b[0m\r\n"
-        );
-        sessionIdRef.current = "__local__";
-        onSessionReady?.("__local__");
-        // ✅ updateStatus here too
-        updateStatus("ready");
-        prompt(term);
+        updateStatus("error");
       }
     };
 
@@ -207,7 +202,7 @@ export default function LinuxLab({ question, examId: examIdProp, onScoreUpdate, 
         // `status` is captured once when this callback is registered (always
         // "connecting"), so it would block every keystroke forever. The ref
         // always holds the latest value regardless of when this fires.
-        if (statusRef.current === "connecting") return;
+        if (statusRef.current !== "ready") return;
 
         if (char === "\r") {
           const cmd = inputLineRef.current.trim();
@@ -217,12 +212,6 @@ export default function LinuxLab({ question, examId: examIdProp, onScoreUpdate, 
 
           if (cmd === "clear" || cmd === "cls") { term.clear(); prompt(term); return; }
           if (cmd === "exit") { term.writeln("exit"); return; }
-
-          if (sessionIdRef.current === "__local__") {
-            term.writeln(`\x1b[90msimulated> ${cmd}\x1b[0m`);
-            prompt(term);
-            return;
-          }
 
           try {
             const { data } = await axios.post("/api/labs/terminal/exec", {
@@ -256,21 +245,16 @@ export default function LinuxLab({ question, examId: examIdProp, onScoreUpdate, 
     return () => {
       mounted = false;
       window.removeEventListener("resize", onResize);
-      if (sessionIdRef.current && sessionIdRef.current !== "__local__") {
-        axios
-          .post("/api/labs/terminal/stop", { sessionId: sessionIdRef.current })
-          .catch(() => { });
-      }
       terminalRef.current?.dispose();
     };
-  }, [examId, question?.setupScript]);
+  }, [examId, question?.setupScript, restartCount]);
 
   // ─── Auto-validate tasks ───────────────────────────────────────────────────
   const runValidation = useCallback(async () => {
     if (
       !validationCommands.length ||
       !sessionIdRef.current ||
-      sessionIdRef.current === "__local__"
+      status !== "ready"
     )
       return;
     setValidating(true);
@@ -278,7 +262,7 @@ export default function LinuxLab({ question, examId: examIdProp, onScoreUpdate, 
     try {
       const { data } = await axios.post("/api/labs/terminal/validate", {
         sessionId: sessionIdRef.current,
-        validationCommands: validationCommands,
+        questionId: question?._id,
       });
       const { results, totalEarned, totalPossible } = data.data;
       setTaskResults(results || []);
@@ -296,12 +280,12 @@ export default function LinuxLab({ question, examId: examIdProp, onScoreUpdate, 
         term.writeln(`\x1b[33mScore: ${totalEarned}/${totalPossible}\x1b[0m\r\n`);
         prompt(term);
       }
-    } catch {
-      // silent fail — teacher can manually grade
+    } catch (error) {
+      setErrorMsg(error.response?.data?.message || error.message || "Could not validate terminal tasks.");
     } finally {
       setValidating(false);
     }
-  }, [validationCommands, onScoreUpdate]);
+  }, [validationCommands, onScoreUpdate, status, question?._id]);
 
   // ─── Render ────────────────────────────────────────────────────────────────
   return (
@@ -325,6 +309,15 @@ export default function LinuxLab({ question, examId: examIdProp, onScoreUpdate, 
               {validating ? "Checking…" : "Check Tasks"}
             </button>
           )}
+          {status === "error" && !readOnly && (
+            <button
+              type="button"
+              onClick={() => setRestartCount((count) => count + 1)}
+              className="text-[10px] rounded bg-amber-700 px-2.5 py-1 font-medium text-white"
+            >
+              Retry terminal
+            </button>
+          )}
           <span
             className={`text-[10px] font-mono ${status === "ready"
               ? "text-[#2C2DE0]"
@@ -346,6 +339,11 @@ export default function LinuxLab({ question, examId: examIdProp, onScoreUpdate, 
         <div ref={termRef} className="flex-1 p-2 min-w-0" />
         <TaskPanel tasks={validationCommands} results={taskResults} />
       </div>
+      {errorMsg && (
+        <p role="alert" className="border-t border-red-900 bg-red-950 px-3 py-2 text-xs text-red-200">
+          {errorMsg}
+        </p>
+      )}
     </div>
   );
 }

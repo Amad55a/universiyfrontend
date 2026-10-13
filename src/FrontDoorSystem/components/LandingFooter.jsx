@@ -1,6 +1,6 @@
 // LandingFooter.jsx
 import { Link } from "react-router-dom";
-import { Mail, MapPin, BookOpen, FileText, Bot, Shield, LayoutDashboard, MonitorDown } from "lucide-react";
+import { Mail, MapPin, BookOpen, FileText, Bot, Shield, LayoutDashboard } from "lucide-react";
 import UnicoreLogo from "./Logo";
 import { useLanguage } from "@/hooks/useLanguage";
 
@@ -10,9 +10,8 @@ const LandingFooter = () => {
   const footerContent = t?.landing?.footer || {};
   const modules = [
     { icon: BookOpen, label: "Digital Library", to: "/contact" },
-    { icon: FileText, label: "Online Examinations", to: "/examguard" },
+    { icon: FileText, label: "Online Examinations", to: "/login" },
     { icon: Bot, label: "AI Study Assistant", to: "/contact" },
-    { icon: MonitorDown, label: "ExamGuard App", to: "/examguard" },
     { icon: LayoutDashboard, label: "Student Portal", to: "/signup" },
     { icon: Shield, label: "For Universities", to: "/pricing" },
   ];

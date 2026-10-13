@@ -70,9 +70,7 @@ import TeacherResourcesPage from './teacher/page/TeacherResourcesPage';
 import TeacherProfilePage from './teacher/page/TeacherProfilePage';
 import StudentExamPortal from './student/pages/StudentExamPortal';
 import StudentExamDetailsPage from './student/pages/StudentExamDetailsPage';
-import StudentExamGuardDownloadPage from './student/pages/StudentExamGuardDownloadPage';
-import DesktopExamAppPage from './FrontDoorSystem/pages/DesktopExamAppPage';
-import ExamGuardOnlyPage from './student/pages/ExamGuardOnlyPage';
+import StudentExamSession from './student/pages/StudentExamSession';
 import StudentResultsPage from './student/pages/StudentResultsPage';
 import CommunityLayout from './community/communityLayout';
 import Feed from './community/Feed';
@@ -125,18 +123,12 @@ createRoot(document.getElementById('root')).render(
                                             <Route path="/about" element={<AboutPage />} />
                                             <Route path="/contact" element={<ContactPage />} />
                                         </Route>
-                                        <Route element={<LandingLayout />}>
-                                            <Route path="/desktop-exam-app" element={<DesktopExamAppPage />} />
-                                        </Route>
-
                                         <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
                                         <Route path="/signup" element={<PublicRoute><SignupCombined /></PublicRoute>} />
                                         <Route path="/verify-code" element={<PublicRoute><VerifyCode /></PublicRoute>} />
                                         <Route path="/oauth-callback" element={<OAuthCallback />} />
                                         <Route path="/my-qr" element={<MyQrCode />} />
                                         <Route path="/forgot-password" element={<ForgotPassword />} />
-                                        <Route path="/examguard/download" element={<StudentExamGuardDownloadPage />} />
-
                                         <Route path="/verify-university-id" element={
                                             <PrivateRouter>
                                                 <VerifyUniversityId />
@@ -177,7 +169,7 @@ createRoot(document.getElementById('root')).render(
                                             element={
                                                 <PrivateRouter>
                                                     <RoleRoute role="student">
-                                                        <ExamGuardOnlyPage />
+                                                        <StudentExamSession />
                                                     </RoleRoute>
                                                 </PrivateRouter>
                                             }

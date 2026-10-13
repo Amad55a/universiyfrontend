@@ -1,125 +1,67 @@
 import React from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import api from "@/api/client";
 import StudentExamPortal from "./StudentExamPortal";
-import { openExamGuard } from "./examguardProtocol";
 
 vi.mock("@/api/client", () => ({
-  default: { post: vi.fn() },
+  default: { get: vi.fn() },
 }));
-vi.mock("./examguardProtocol", () => ({ openExamGuard: vi.fn() }));
-vi.mock("../../hooks/useLanguage", () => ({
-  useLanguage: () => ({ t: (key) => key }),
-}));
-vi.mock("@/context/AuthContext", () => ({
-  useAuth: () => ({ user: { id: "student-1" }, loading: false }),
-}));
-
-const validExam = {
-  examId: "507f1f77bcf86cd799439011",
-  title: "Midterm",
-  duration: 45,
-  questionsCount: 4,
-  security: { sebRequired: false },
-};
 
 function renderPortal() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
   return render(
-    <MemoryRouter>
-      <StudentExamPortal />
-    </MemoryRouter>,
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <StudentExamPortal />
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 
-describe("ExamGuard launch ticket handoff", () => {
+describe("browser-based student exam portal", () => {
   beforeEach(() => {
-    api.post.mockReset();
-    openExamGuard.mockReset();
-    localStorage.clear();
-    Object.defineProperty(window, "SafeExamBrowser", {
-      configurable: true,
-      value: undefined,
+    vi.clearAllMocks();
+  });
+
+  it("lists available exams and links to their detail and launch page", async () => {
+    api.get.mockResolvedValueOnce({
+      data: {
+        data: {
+          exams: [{
+            id: "507f1f77bcf86cd799439011",
+            title: "Midterm",
+            availableFrom: "2026-10-12T18:00:00.000Z",
+            duration: 45,
+            status: "available",
+          }],
+        },
+      },
     });
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  it("requests an authenticated one-time ticket and only displays/copies it temporarily", async () => {
-    const ticket = "a".repeat(43);
-    const expiresAt = new Date(Date.now() + 60_000).toISOString();
-    api.post.mockResolvedValueOnce({ data: { data: validExam } });
-    api.post.mockResolvedValueOnce({ data: { data: { ticket, expiresAt } } });
     renderPortal();
 
-    fireEvent.change(screen.getByPlaceholderText("CS101-MID"), {
-      target: { value: "EXM-1234-ABCD-5678" },
-    });
-    fireEvent.submit(screen.getByRole("button", { name: "exam.verifyToken" }).closest("form"));
-    fireEvent.click(await screen.findByRole("button", { name: "Open in ExamGuard" }));
-
-    const ticketInput = await screen.findByLabelText("One-time ExamGuard ticket");
-    expect(ticketInput).toHaveValue(ticket);
-    expect(openExamGuard).toHaveBeenCalledWith(ticket);
-    expect(await screen.findByText(/cannot confirm whether ExamGuard opened/i)).toBeInTheDocument();
-    expect(api.post).toHaveBeenLastCalledWith(
-      `/exams/student/${validExam.examId}/launch-ticket`,
-      {},
-      { withCredentials: true },
+    expect(await screen.findByRole("heading", { name: "University Exam Portal" })).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "Midterm" })).toHaveAttribute(
+      "href",
+      "/exams/507f1f77bcf86cd799439011",
     );
-    expect(window.location.search).toBe("");
-    expect(localStorage.length).toBe(0);
-
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Copy ticket" }));
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith(ticket));
-    expect(await screen.findByText(/Ticket copied/)).toBeInTheDocument();
+    expect(api.get).toHaveBeenCalledWith("/exams/student");
+    expect(screen.getByText(/start or resume your browser session/)).toBeInTheDocument();
   });
 
-  it("refuses to copy a ticket after its expiry", async () => {
-    const ticket = "b".repeat(43);
-    api.post.mockResolvedValueOnce({ data: { data: validExam } });
-    api.post.mockResolvedValueOnce({
-      data: { data: { ticket, expiresAt: new Date(Date.now() + 60_000).toISOString() } },
-    });
+  it("can refresh the exam list and reports empty and error states", async () => {
+    api.get
+      .mockResolvedValueOnce({ data: { data: { exams: [] } } })
+      .mockRejectedValueOnce({ response: { data: { message: "Connection unavailable." } } });
     renderPortal();
+    expect(await screen.findByText(/No upcoming or available exams/)).toBeInTheDocument();
 
-    fireEvent.change(screen.getByPlaceholderText("CS101-MID"), {
-      target: { value: "EXM-1234-ABCD-5678" },
-    });
-    fireEvent.submit(screen.getByRole("button", { name: "exam.verifyToken" }).closest("form"));
-    fireEvent.click(await screen.findByRole("button", { name: "Open in ExamGuard" }));
-    await screen.findByLabelText("One-time ExamGuard ticket");
-
-    vi.setSystemTime(new Date(Date.now() + 61_000));
-    fireEvent.click(screen.getByRole("button", { name: "Copy ticket" }));
-    expect(screen.queryByLabelText("One-time ExamGuard ticket")).not.toBeInTheDocument();
-    expect(screen.getByText(/ticket expired/i)).toBeInTheDocument();
-  });
-
-  it("offers only the desktop-app handoff and no browser exam start", async () => {
-    const sebExam = {
-      ...validExam,
-      security: { sebRequired: true },
-    };
-    api.post.mockResolvedValueOnce({ data: { data: sebExam } });
-    renderPortal();
-
-    fireEvent.change(screen.getByPlaceholderText("CS101-MID"), {
-      target: { value: "EXM-1234-ABCD-5678" },
-    });
-    fireEvent.submit(screen.getByRole("button", { name: "exam.verifyToken" }).closest("form"));
-
-    expect(await screen.findByRole("button", { name: "Open in ExamGuard" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /start your exam/i })).not.toBeInTheDocument();
-    expect(screen.getByText(/not OS-level lockdown/i)).toBeInTheDocument();
-    expect(api.post).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Refresh exams" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Connection unavailable.");
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(2));
   });
 });

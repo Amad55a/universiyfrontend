@@ -2,8 +2,8 @@
 //
 // The Question Bank and the Exam builder use two different question "shapes":
 //
-//   Question Bank types:  mcq, truefalse, essay, short_answer, programming, sql, html_css_js
-//   Exam question types:  mcq, truefalse, essay, lab, os_linux, os_windows, design_lab, networking_lab
+//   Question Bank types:  mcq, multi_select, truefalse, essay, short_answer, programming, sql, html_css_js
+//   Exam question types:  mcq, multi_select, truefalse, short_answer, essay, lab, os_linux, os_windows, design_lab, networking_lab
 //
 // This file converts a bank question into whatever shape the exam builder
 // (TeacherExamsPage + QuestionEditor) expects, so "Add to Exam" from the
@@ -35,6 +35,14 @@ export function mapBankQuestionToExamQuestion(bankQuestion) {
         answer: bankQuestion.answer || "",
       };
 
+    case "multi_select":
+      return {
+        ...base,
+        type: "multi_select",
+        options: bankQuestion.options?.length ? bankQuestion.options : ["", "", "", ""],
+        answer: Array.isArray(bankQuestion.answer) ? bankQuestion.answer : [],
+      };
+
     case "truefalse":
       return {
         ...base,
@@ -49,12 +57,10 @@ export function mapBankQuestionToExamQuestion(bankQuestion) {
         wordLimit: bankQuestion.wordLimit || 500,
       };
 
-    // Short answer doesn't have its own exam-side editor yet — treat it as a
-    // tightly-capped essay so it's still gradeable end-to-end.
     case "short_answer":
       return {
         ...base,
-        type: "essay",
+        type: "short_answer",
         wordLimit: bankQuestion.wordLimit || 100,
       };
 
