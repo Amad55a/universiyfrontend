@@ -12,7 +12,9 @@ import "../../styles/examtheme.css";
 
 const QUESTION_DEFAULTS = {
   mcq: { options: ["", "", "", ""], answer: "" },
+  multi_select: { options: ["", "", "", ""], answer: [] },
   truefalse: { answer: true },
+  short_answer: { wordLimit: 100 },
   essay: { wordLimit: 500 },
   lab: { environment: "vscode", allowedLanguages: ["javascript"], starterCode: {} },
   os_windows: { environment: "windows_emu" },
@@ -23,7 +25,9 @@ const QUESTION_DEFAULTS = {
 
 const QUESTION_TYPES = [
   { type: "mcq", label: "Add MCQ", variant: "primary" },
+  { type: "multi_select", label: "Add Multi-Select", variant: "primary" },
   { type: "truefalse", label: "Add True/False", variant: "primary" },
+  { type: "short_answer", label: "Add Short Answer", variant: "primary" },
   { type: "essay", label: "Add Essay", variant: "primary" },
   { type: "lab", label: "Add Code Lab", variant: "neutral" },
   { type: "os_windows", label: "Add OS Windows", variant: "neutral" },

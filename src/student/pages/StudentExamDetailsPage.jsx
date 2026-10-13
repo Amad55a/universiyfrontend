@@ -1,11 +1,9 @@
-import React from "react";
-import { useEffect, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import React, { useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, CalendarDays, Clock3, Copy, Download, Loader2, ShieldCheck } from "lucide-react";
+import { ArrowLeft, CalendarDays, Clock3, Loader2, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import api from "@/api/client";
-import { openExamGuard } from "./examguardProtocol";
 
 function formatDate(value) {
   const date = new Date(value);
@@ -16,13 +14,9 @@ function formatDate(value) {
 
 export default function StudentExamDetailsPage() {
   const { examId } = useParams();
+  const navigate = useNavigate();
   const [launching, setLaunching] = useState(false);
   const [launchMessage, setLaunchMessage] = useState("");
-  const [launchTicket, setLaunchTicket] = useState(null);
-  const [ticketMessage, setTicketMessage] = useState("");
-  const ticketTimerRef = useRef(null);
-
-  useEffect(() => () => clearTimeout(ticketTimerRef.current), []);
 
   const {
     data: exam,
@@ -37,63 +31,47 @@ export default function StudentExamDetailsPage() {
     },
   });
 
-  const handleOpenExamGuard = async () => {
-    if (!exam?.canUseExamGuard || launching) return;
-    clearTimeout(ticketTimerRef.current);
+  const canStartInBrowser = exam?.canStartInBrowser ??
+    (exam?.canStart && !exam?.sebRequired && !exam?.security?.browserLock);
+
+  const handleStartExam = async () => {
+    if (!exam?.id || !canStartInBrowser || launching) return;
     setLaunching(true);
     setLaunchMessage("");
-    setLaunchTicket(null);
-    setTicketMessage("");
     try {
-      const { data } = await api.post(
-        `/exams/student/${exam.id}/launch-ticket`,
+      const { data: issueResponse } = await api.post(
+        `/exams/student/${exam.id}/launch-token`,
         {},
-        { withCredentials: true },
       );
-      const issued = data?.data;
-      const expiresAt = Date.parse(issued?.expiresAt);
+      const issued = issueResponse?.data;
+      const expiry = Date.parse(issued?.expiresAt);
       if (
-        typeof issued?.ticket !== "string" ||
-        !/^[A-Za-z0-9_-]{43}$/.test(issued.ticket) ||
-        !Number.isFinite(expiresAt) ||
-        expiresAt <= Date.now()
+        typeof issued?.token !== "string" ||
+        !/^[A-Za-z0-9_-]{43}$/.test(issued.token) ||
+        issued?.exam?.id !== exam.id ||
+        !Number.isFinite(expiry) ||
+        expiry <= Date.now()
       ) {
-        throw new Error("UniCORE returned an invalid or expired launch ticket.");
+        throw new Error("The exam launch token was invalid or expired. Please try again.");
       }
-      setLaunchTicket({ value: issued.ticket, expiresAt });
-      setLaunchMessage("We sent a launch link to your system, but cannot confirm whether ExamGuard opened. If it did not, use the one-time ticket below.");
-      ticketTimerRef.current = setTimeout(() => {
-        setLaunchTicket(null);
-        setTicketMessage("This ticket has expired. Select Open ExamGuard to request a fresh one.");
-        setLaunchMessage("The launch ticket expired. Request a new one before trying manual entry.");
-      }, Math.max(0, expiresAt - Date.now()));
-      try {
-        openExamGuard(issued.ticket);
-      } catch {
-        setLaunchMessage("Automatic launch was blocked. Copy the one-time ticket below and enter it in ExamGuard manually.");
+
+      const { data: redeemResponse } = await api.post(
+        "/exams/student/launch-token/redeem",
+        { token: issued.token },
+      );
+      if (redeemResponse?.data?.examId !== exam.id) {
+        throw new Error("The launch token was not authorized for this exam.");
       }
+
+      navigate(`/exam-session/${exam.id}`, { replace: true });
     } catch (launchError) {
       const message = launchError.response?.data?.message ||
         launchError.message ||
-        "Could not open ExamGuard.";
+        "Could not start the exam. Check your connection and try again.";
       setLaunchMessage(message);
       toast.error(message);
     } finally {
       setLaunching(false);
-    }
-  };
-
-  const handleCopyTicket = async () => {
-    if (!launchTicket || launchTicket.expiresAt <= Date.now()) {
-      setLaunchTicket(null);
-      setTicketMessage("This ticket has expired. Select Open ExamGuard to request a fresh one.");
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(launchTicket.value);
-      setTicketMessage("Ticket copied. Paste it into ExamGuard and choose Verify Invitation before it expires.");
-    } catch {
-      setTicketMessage("Copy is unavailable. Select the ticket and copy it manually.");
     }
   };
 
@@ -103,9 +81,11 @@ export default function StudentExamDetailsPage() {
   if (error || !exam) {
     return (
       <main className="mx-auto max-w-3xl p-6">
-        <p role="alert" className="text-red-700">{error?.response?.data?.message || error?.message || "Exam not found."}</p>
+        <p role="alert" className="text-red-700">
+          {error?.response?.data?.message || error?.message || "Exam not found."}
+        </p>
         <button type="button" onClick={() => refetch()} className="mt-4 rounded-lg border px-4 py-2">Try again</button>
-        <Link to="/dashboard" className="ml-3 text-[#2C2DE0] underline">Return to dashboard</Link>
+        <Link to="/exam-portal" className="ml-3 text-[#2C2DE0] underline">Return to the exam portal</Link>
       </main>
     );
   }
@@ -113,8 +93,8 @@ export default function StudentExamDetailsPage() {
   const statusText = exam.status.replaceAll("-", " ");
   return (
     <main className="mx-auto w-full max-w-4xl space-y-6 p-4 sm:p-8">
-      <Link to="/dashboard" className="inline-flex items-center gap-2 text-sm font-semibold text-[#2C2DE0]">
-        <ArrowLeft className="h-4 w-4" /> Back to dashboard
+      <Link to="/exam-portal" className="inline-flex items-center gap-2 text-sm font-semibold text-[#2C2DE0]">
+        <ArrowLeft className="h-4 w-4" /> Back to exam portal
       </Link>
       <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -149,7 +129,7 @@ export default function StudentExamDetailsPage() {
           <h2 id="exam-eligibility" className="font-semibold">Eligibility and attempt</h2>
           <p className="mt-2 text-sm text-gray-600 dark:text-zinc-300">
             {exam.attemptStatus === "in-progress"
-              ? `You have an exam attempt in progress${exam.sessionEndsAt ? ` until ${formatDate(exam.sessionEndsAt)}` : ""}.`
+              ? `You have an exam attempt in progress${exam.sessionEndsAt ? ` until ${formatDate(exam.sessionEndsAt)}` : ""}. Re-entering will resume this attempt.`
               : exam.canStart
                 ? "This exam is available to your account."
                 : exam.status === "upcoming"
@@ -163,87 +143,53 @@ export default function StudentExamDetailsPage() {
           {exam.sebRequired && (
             <p className="mt-3 flex items-start gap-2 text-sm text-amber-800 dark:text-amber-300">
               <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
-              Safe Exam Browser is required. The UniCORE Exam App is the supported secure desktop client for this exam.
-            </p>
-          )}
-          {exam.security?.microphoneRequired && (
-            <p className="mt-3 text-sm text-amber-800 dark:text-amber-300">
-              This exam requires microphone monitoring, which the UniCORE desktop app does not currently support. The desktop launch is blocked.
+              Safe Exam Browser is required for this exam; standard Chrome launch is not allowed by the exam policy.
             </p>
           )}
           {exam.security?.browserLock && (
             <p className="mt-3 text-sm text-amber-800 dark:text-amber-300">
-              This exam requires a managed browser lock, which the UniCORE desktop app does not currently provide. The desktop launch is blocked.
+              This exam requires a managed browser lock, which a normal browser tab cannot provide.
+            </p>
+          )}
+          {(exam.security?.cameraRequired || exam.security?.microphoneRequired) && (
+            <p className="mt-3 text-sm text-amber-800 dark:text-amber-300">
+              {exam.security.cameraRequired && exam.security.microphoneRequired
+                ? "This exam asks for camera and microphone permission. Camera still images may be sent to exam staff; microphone audio is not recorded by UniCORE."
+                : exam.security.cameraRequired
+                  ? "This exam asks for camera permission and sends periodic still images to exam staff while the session is open."
+                  : "This exam checks microphone permission and availability. Audio is not recorded; the microphone permission stream is stopped after the check."}
             </p>
           )}
         </section>
 
-        {exam.canUseExamGuard && (
-          <>
-            <button
-              type="button"
-              onClick={handleOpenExamGuard}
-              disabled={launching}
-              aria-label={exam.attemptStatus === "in-progress" ? "Resume in ExamGuard" : "Open ExamGuard"}
-              className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#2C2DE0] px-5 py-3 font-semibold text-white disabled:opacity-60 sm:w-auto"
-            >
-              {launching ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              {launching ? "Preparing secure launch…" : exam.attemptStatus === "in-progress" ? "Resume in ExamGuard" : "Open ExamGuard"}
-            </button>
-            <p className="mt-3 text-sm text-gray-600 dark:text-zinc-300">
-              Your browser may ask permission to open ExamGuard. We cannot confirm that the app opened; the one-time ticket will remain available here for manual entry.
-            </p>
-          </>
-        )}
-
-        {exam.canStart && exam.sebRequired && (
-          <div className="mt-6 rounded-xl bg-amber-50 p-4 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-            <p>Continue using the existing Safe Exam Browser flow. Use the exam token provided by your instructor on the exam portal.</p>
-            <Link to="/exam-portal" className="mt-3 inline-flex items-center gap-2 font-semibold underline">
-              <ShieldCheck className="h-4 w-4" /> Continue to exam portal
-            </Link>
-          </div>
+        {canStartInBrowser && (
+          <button
+            type="button"
+            onClick={handleStartExam}
+            disabled={launching}
+            className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#2C2DE0] px-5 py-3 font-semibold text-white disabled:opacity-60 sm:w-auto"
+          >
+            {launching && <Loader2 className="h-4 w-4 animate-spin" />}
+            {launching
+              ? "Preparing exam session…"
+              : exam.attemptStatus === "in-progress"
+                ? "Resume exam"
+                : "Start exam"}
+          </button>
         )}
 
         {launchMessage && (
-          <p role="status" aria-live="polite" className="mt-4 text-sm text-gray-600 dark:text-zinc-300">
-            {launchMessage}
-          </p>
-        )}
-
-        {launchTicket && exam.canUseExamGuard && (
-          <section className="mt-4 rounded-xl border border-indigo-200 bg-indigo-50 p-4 dark:border-indigo-900 dark:bg-indigo-950/30" aria-labelledby="examguard-ticket-heading">
-            <h2 id="examguard-ticket-heading" className="font-semibold text-gray-900 dark:text-white">One-time ExamGuard invitation</h2>
-            <p className="mt-1 text-sm text-gray-700 dark:text-zinc-300">
-              Expires {formatDate(launchTicket.expiresAt)}. It can only be redeemed once. You may use automatic launch or enter this same ticket manually, not both.
-            </p>
-            <label className="sr-only" htmlFor="examguard-launch-ticket">One-time ExamGuard ticket</label>
-            <input
-              id="examguard-launch-ticket"
-              aria-label="One-time ExamGuard ticket"
-              readOnly
-              value={launchTicket.value}
-              onFocus={(event) => event.target.select()}
-              className="mt-3 w-full rounded-lg border border-indigo-300 bg-white p-3 font-mono text-sm text-indigo-950 dark:border-indigo-800 dark:bg-zinc-900 dark:text-indigo-100"
-              autoComplete="off"
-              spellCheck={false}
-            />
-            <button type="button" onClick={handleCopyTicket} className="mt-3 inline-flex items-center gap-2 rounded-lg border border-indigo-500 px-4 py-2 text-sm font-semibold text-indigo-800 dark:text-indigo-200">
-              <Copy className="h-4 w-4" /> Copy invitation
+          <div className="mt-4" role="alert" aria-live="polite">
+            <p className="text-sm text-red-700 dark:text-red-300">{launchMessage}</p>
+            <button
+              type="button"
+              onClick={handleStartExam}
+              disabled={launching || !canStartInBrowser}
+              className="mt-2 rounded-lg border px-4 py-2 text-sm font-semibold disabled:opacity-50"
+            >
+              Retry launch
             </button>
-            <p role="status" aria-live="polite" className="mt-2 text-sm text-gray-700 dark:text-zinc-300">
-              {ticketMessage || "If ExamGuard did not open, open it from your applications menu, paste this ticket, and choose Verify Invitation."}
-            </p>
-            <p className="mt-2 text-sm text-gray-700 dark:text-zinc-300">
-              Need installation or troubleshooting help?{" "}
-              <Link
-                to={`/examguard/download?examId=${encodeURIComponent(exam.id)}`}
-                className="font-semibold text-[#2C2DE0] underline"
-              >
-                <Download className="inline h-3.5 w-3.5" /> Open installation guide
-              </Link>
-            </p>
-          </section>
+          </div>
         )}
       </section>
     </main>

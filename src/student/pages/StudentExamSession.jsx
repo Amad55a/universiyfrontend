@@ -26,7 +26,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import axios from "axios";
 import { toast } from "sonner";
-import { useNavigate, useLocation, useParams } from "react-router-dom";
+import { Link, useNavigate, useLocation, useParams } from "react-router-dom";
 import { useLanguage } from "../../hooks/useLanguage";
 import {
   Clock,
@@ -68,26 +68,58 @@ function unescapeHtml(str) {
 /** Build the localStorage key for this exam's answer draft. */
 const draftKey = (examId) => `exam_draft_${examId}`;
 
-/** Load answers: prefer the localStorage draft, fall back to server answers. */
-function loadInitialAnswers(examId, serverAnswers = []) {
+function readStoredDraft(examId) {
   try {
     const raw = localStorage.getItem(draftKey(examId));
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === "object") return parsed;
+    if (!raw) return { draft: null, error: "" };
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return { draft: null, error: "Saved browser draft has an invalid format." };
     }
-  } catch { }
-  // Build from server state (previous autosave)
+    if (parsed.answers && typeof parsed.answers === "object" && !Array.isArray(parsed.answers)) {
+      return {
+        draft: {
+          answers: parsed.answers,
+          revision: Number.isSafeInteger(parsed.revision) ? parsed.revision : 0,
+        },
+        error: "",
+      };
+    }
+    return { draft: { answers: parsed, revision: 0 }, error: "" };
+  } catch (error) {
+    return {
+      draft: null,
+      error: `Could not read the saved browser draft: ${error.message}`,
+    };
+  }
+}
+
+function buildServerAnswers(serverAnswers = []) {
   const initial = {};
-  serverAnswers.forEach((a) => {
-    initial[a.questionId] = {
-      questionId: a.questionId,
-      type: a.type,
-      answer: a.answer,
-      codeOutput: a.codeOutput ?? "",
+  serverAnswers.forEach((answer) => {
+    initial[answer.questionId] = {
+      questionId: answer.questionId,
+      type: answer.type,
+      answer: answer.answer,
+      codeOutput: answer.codeOutput ?? "",
     };
   });
   return initial;
+}
+
+function loadInitialAnswers(examId, serverAnswers = [], serverRevision = 0) {
+  const stored = readStoredDraft(examId);
+  const server = buildServerAnswers(serverAnswers);
+  const local = stored.draft;
+  const useLocal = local &&
+    (local.revision > serverRevision ||
+      (Object.keys(server).length === 0 && Object.keys(local.answers).length > 0));
+
+  return {
+    answers: useLocal ? local.answers : server,
+    revision: Math.max(serverRevision, local?.revision || 0),
+    storageError: stored.error,
+  };
 }
 
 export default function StudentExamSession() {
@@ -98,41 +130,60 @@ export default function StudentExamSession() {
 
   const [examSession, setExamSession] = useState(location.state?.examSession || null);
   const [sessionLoading, setSessionLoading] = useState(!location.state?.examSession);
+  const [sessionError, setSessionError] = useState("");
+  const [sessionRetry, setSessionRetry] = useState(0);
   const [currentQ, setCurrentQ] = useState(0);
+  const [answers, setAnswers] = useState({});
+  const [answersReady, setAnswersReady] = useState(false);
+  const [storageWarning, setStorageWarning] = useState("");
+  const [saveError, setSaveError] = useState("");
+  const [saveRetry, setSaveRetry] = useState(0);
+  const answerRevisionRef = useRef(0);
+  const [fullscreenError, setFullscreenError] = useState("");
 
   const exam = examSession?.exam;
   const questions = exam?.questions || [];
 
-  // Resume session after refresh / SEB reconnect (location.state is lost on reload)
+  // A session is restored by the server so a refresh never creates a new attempt.
   useEffect(() => {
-    if (examSession || !examId) {
-      setSessionLoading(false);
-      return;
-    }
+    if (examSession || !examId) return;
     let cancelled = false;
+    setSessionLoading(true);
+    setSessionError("");
     (async () => {
       try {
         const { data } = await axios.get(`/api/exams/student/${examId}/start`);
+        if (!data?.data?.exam || String(data.data.exam._id) !== String(examId)) {
+          throw new Error("The server returned an invalid exam session.");
+        }
         if (!cancelled) setExamSession(data.data);
       } catch (err) {
         if (!cancelled) {
-          toast.error(err.response?.data?.message || "Could not resume exam session");
-          navigate("/exam-portal");
+          const message = err.response?.data?.message || err.message ||
+            "Could not load your exam session. Check your connection and retry.";
+          setSessionError(message);
+          toast.error(message);
         }
       } finally {
         if (!cancelled) setSessionLoading(false);
       }
     })();
     return () => { cancelled = true; };
-  }, [examId, examSession, navigate]);
+  }, [examId, examSession, sessionRetry]);
 
   // ─── answers: ALL student work lives here ───────────────────────────────────
-  // Initialised from localStorage → then server → then empty.
-  const [answers, setAnswers] = useState({});
-
   useEffect(() => {
     if (!examId || !examSession) return;
-    setAnswers(loadInitialAnswers(examId, examSession?.answers));
+    setAnswersReady(false);
+    const initial = loadInitialAnswers(
+      examId,
+      examSession.answers,
+      examSession.answerRevision || 0,
+    );
+    answerRevisionRef.current = initial.revision;
+    setAnswers(initial.answers);
+    setStorageWarning(initial.storageError);
+    setAnswersReady(true);
   }, [examId, examSession]);
 
   const [timeLeft, setTimeLeft] = useState(0);
@@ -143,15 +194,25 @@ export default function StudentExamSession() {
   // The write is synchronous (localStorage.setItem) so data survives
   // unmount/remount of individual lab components.
   useEffect(() => {
-    if (!examId) return;
+    if (!examId || !examSession || !answersReady) return;
     try {
-      localStorage.setItem(draftKey(examId), JSON.stringify(answers));
-    } catch { }
-  }, [answers, examId]);
+      localStorage.setItem(draftKey(examId), JSON.stringify({
+        answers,
+        revision: answerRevisionRef.current,
+      }));
+      setStorageWarning("");
+    } catch (error) {
+      setStorageWarning(`Browser draft storage is unavailable: ${error.message}`);
+    }
+  }, [answers, answersReady, examId, examSession]);
 
   // ─── Universal answer change handler ────────────────────────────────────────
   const handleAnswerChange = useCallback(
     (questionId, value, extra = {}) => {
+      answerRevisionRef.current = Math.max(
+        Date.now(),
+        answerRevisionRef.current + 1,
+      );
       setAnswers((prev) => ({
         ...prev,
         [questionId]: {
@@ -192,8 +253,14 @@ export default function StudentExamSession() {
           };
         });
 
+        const clientRevision = Math.max(
+          Date.now(),
+          answerRevisionRef.current + 1,
+        );
+        answerRevisionRef.current = clientRevision;
         await axios.post(`/api/exams/student/${examId}/submit`, {
           answers: finalAnswers,
+          clientRevision,
         });
         // Clear draft on successful submit
         localStorage.removeItem(draftKey(examId));
@@ -225,21 +292,26 @@ export default function StudentExamSession() {
         blockRightClick: exam?.security?.disableRightClick !== false,
         detectDevtools: true,
         preventDuplicateTabs: true,
+        recordViolations: exam?.security?.recordViolations !== false,
       },
       maxViolations: 5,
       onViolation: (entry) => {
-        axios
-          .post(`/api/exams/student/${examId}/log-cheating`, {
-            action: entry.type,
-          })
-          .catch(() => { });
+        if (exam?.security?.recordViolations !== false) {
+          axios
+            .post(`/api/exams/student/${examId}/log-cheating`, {
+              action: entry.type,
+            })
+            .catch((error) => {
+              console.error("Could not record the configured exam integrity event:", error);
+            });
+        }
         toast.error(
           t("exam.cheatingWarning") ||
-          "Warning: this action was logged. Further violations may auto-submit your exam."
+          "This action may be recorded under your exam's integrity policy."
         );
       },
       onMaxViolations: () => {
-        if (exam?.security?.autoSubmit) {
+        if (exam?.security?.recordViolations !== false && exam?.security?.autoSubmit) {
           toast.error(
             t("exam.autoSubmitted") ||
             "Exam auto-submitted due to repeated violations."
@@ -269,143 +341,99 @@ export default function StudentExamSession() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [exam]);
 
-  // ─── FAULT TRACKING (3 strikes = auto-submit) ─────────────────────────────────
-  const [faultCount, setFaultCount] = useState(0);
-  const [maxFaults] = useState(3);
-  const faultTimeoutRef = useRef(null);
-  const lastFaultTimeRef = useRef(0);
-
-  // Record a fault (exit, blur, etc.) — throttled to prevent spam
-  const recordFault = useCallback(
-    async (reason = "window_blur") => {
-      const now = Date.now();
-      if (now - lastFaultTimeRef.current < 2000) return; // throttle
-      lastFaultTimeRef.current = now;
-
-      try {
-        const { data } = await axios.post(
-          `/api/exams/student/${examId}/record-fault`,
-          { reason, currentQuestionId: questions[currentQ]?._id }
-        );
-
-        const newFaultCount = data.data?.faultCount || 0;
-        setFaultCount(newFaultCount);
-
-        if (data.data?.autoSubmitted) {
-          toast.error(
-            `Exam auto-submitted: reached fault limit (${newFaultCount}/${maxFaults})`
-          );
-          handleSubmit(true);
-        } else {
-          const remaining = data.data?.remainingAttempts || 0;
-          if (remaining === 1) {
-            toast.error(
-              `⚠️ Warning: 1 more fault and your exam will auto-submit!`
-            );
-          } else if (remaining > 0) {
-            toast.warning(
-              `Fault recorded: ${remaining} attempt(s) remaining`
-            );
-          }
-        }
-      } catch (err) {
-        console.error("Failed to record fault:", err);
-      }
-    },
-    [examId, questions, currentQ, handleSubmit, maxFaults]
-  );
-
-  // Check fault status on session load
-  useEffect(() => {
-    if (!examId) return;
-    axios
-      .get(`/api/exams/student/${examId}/fault-status`)
-      .then(({ data }) => {
-        setFaultCount(data.data?.faultCount || 0);
-        if (data.data?.autoSubmitted) {
-          toast.error("Your exam was auto-submitted due to faults");
-          navigate("/dashboard");
-        }
-      })
-      .catch(() => { }); // silently fail
-  }, [examId, navigate]);
-
-  // Detect window blur (lost focus) — Linux/Chrome doesn't enforce fullscreen
-  // so we need to detect when student minimizes or switches tabs
-  useEffect(() => {
-    if (!exam || exam.status === "submitted") return;
-
-    const handleBlur = () => {
-      recordFault("window_blur");
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        recordFault("tab_hidden");
-      }
-    };
-
-    window.addEventListener("blur", handleBlur);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
-    return () => {
-      window.removeEventListener("blur", handleBlur);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-  }, [exam, recordFault]);
-
-  // Request fullscreen on Linux/Chrome (no enforcement needed, just modal)
-  useEffect(() => {
-    if (!exam || !document.fullscreenEnabled) return;
-
-    // For Linux users, offer fullscreen modal instead of forcing it
-    if (
-      !document.fullscreenElement &&
-      exam.security?.fullscreenRequired &&
-      !window.sessionStorage.getItem(`exam_fullscreen_requested_${examId}`)
-    ) {
-      const handleFullscreenRequest = async () => {
-        try {
-          window.sessionStorage.setItem(`exam_fullscreen_requested_${examId}`, "true");
-          const rootElement = document.querySelector(".exam-root") || document.documentElement;
-          await rootElement.requestFullscreen?.();
-        } catch (err) {
-          // Linux Chrome may not support fullscreen from user gesture
-          // This is OK — we just log the fault instead
-          console.debug("Fullscreen request failed (expected on Linux):", err.message);
-        }
-      };
-
-      // Request fullscreen after a short delay to ensure proper event handling
-      const timer = setTimeout(handleFullscreenRequest, 500);
-      return () => clearTimeout(timer);
-    }
-  }, [exam, examId]);
-
   // ─── Backend autosave (3-second debounce, belt-and-suspenders) ──────────────
-  // localStorage covers page refresh; backend autosave covers server-side
-  // persistence for the teacher's monitoring dashboard.
+  // Browser draft storage covers refresh; this writes the same answers to the
+  // server so recovery works across browsers and devices.
   useEffect(() => {
-    if (!examId || Object.keys(answers).length === 0) return;
+    if (!examId || !examSession || !answersReady || isSubmitting) return;
     const timer = setTimeout(() => {
-      axios
-        .post(`/api/exams/student/${examId}/autosave`, {
+      const clientRevision = Math.max(
+        Date.now(),
+        answerRevisionRef.current + 1,
+      );
+      answerRevisionRef.current = clientRevision;
+      setSaveError("");
+      axios.post(`/api/exams/student/${examId}/autosave`, {
           answers: Object.values(answers),
+          clientRevision,
         })
-        .catch(() => { });
+        .then(({ data }) => {
+          answerRevisionRef.current = Math.max(
+            answerRevisionRef.current,
+            data.data?.answerRevision || 0,
+          );
+        })
+        .catch((error) => {
+          setSaveError(
+            error.response?.data?.message ||
+              error.message ||
+              "Answers could not be saved. Retry before leaving this page.",
+          );
+        });
     }, 3000);
     return () => clearTimeout(timer);
-  }, [answers, examId]);
+  }, [answers, answersReady, examId, examSession, isSubmitting, saveRetry]);
 
-  if (sessionLoading || !examSession || !exam) {
+  const handleEnterFullscreen = useCallback(async () => {
+    if (!document.fullscreenEnabled) {
+      setFullscreenError("Fullscreen is not supported by this browser. Use a supported browser or contact your instructor.");
+      return;
+    }
+    try {
+      const root = document.querySelector(".exam-root") || document.documentElement;
+      await root.requestFullscreen();
+      setFullscreenError("");
+    } catch (error) {
+      setFullscreenError(
+        error?.message
+          ? `Chrome did not enter fullscreen: ${error.message}. Select the button to try again.`
+          : "Chrome did not enter fullscreen. Select the button to try again.",
+      );
+    }
+  }, []);
+
+  if (sessionLoading) {
     return (
-      <div className="p-8 text-center font-display text-lg">
-        {t("exam.loadingSession") || "Loading session…"}
+      <div role="status" className="p-8 text-center font-display text-lg">
+        {t("exam.loadingSession") || "Loading your exam session…"}
       </div>
+    );
+  }
+  if (sessionError || !examSession || !exam) {
+    return (
+      <main className="mx-auto max-w-2xl space-y-4 p-8">
+        <h1 className="text-2xl font-semibold">Your exam session could not be loaded</h1>
+        <p role="alert" className="text-red-700 dark:text-red-300">
+          {sessionError || "The server did not return a valid exam session."}
+        </p>
+        <button
+          type="button"
+          onClick={() => setSessionRetry((attempt) => attempt + 1)}
+          className="rounded-lg bg-[#2C2DE0] px-5 py-3 font-semibold text-white"
+        >
+          Retry session recovery
+        </button>
+        <Link to="/exam-portal" className="ml-3 text-[#2C2DE0] underline">
+          Return to exam portal
+        </Link>
+        {sessionError.includes("logged in") && (
+          <Link to="/login" className="ml-3 text-[#2C2DE0] underline">
+            Sign in
+          </Link>
+        )}
+      </main>
     );
   }
 
   const activeQuestion = questions[currentQ];
+  if (!activeQuestion) {
+    return (
+      <main className="mx-auto max-w-2xl space-y-4 p-8">
+        <p role="alert">This exam session has no available questions. Your attempt has not been submitted.</p>
+        <Link to="/exam-portal" className="text-[#2C2DE0] underline">Return to exam portal</Link>
+      </main>
+    );
+  }
 
   const formatTime = (seconds) => {
     const h = Math.floor(seconds / 3600);
@@ -438,7 +466,42 @@ export default function StudentExamSession() {
       <ExamCameraMonitor
         examId={examId}
         required={!!exam?.security?.cameraRequired}
+        microphoneRequired={!!exam?.security?.microphoneRequired}
       />
+      {exam.security?.fullscreenRequired && !isFullscreen && (
+        <div className="fixed inset-0 z-[11000] flex items-center justify-center bg-neutral-950/95 p-6 text-white">
+          <section className="max-w-xl space-y-4 text-center" role="alert">
+            <h2 className="text-2xl font-semibold">Enter fullscreen to continue</h2>
+            <p>
+              This exam's policy requires browser fullscreen. Chrome only permits this after you click below.
+              If you exit fullscreen, this screen will return and you can re-enter.
+            </p>
+            <p className="text-sm text-white/70">
+              Browser fullscreen cannot prevent operating-system actions, screenshots, application switching, or all keyboard shortcuts.
+            </p>
+            {!document.fullscreenEnabled && (
+              <p className="font-medium text-amber-200">
+                This browser does not support fullscreen. Use a supported browser or contact your instructor;
+                this attempt remains available for recovery and has not been submitted.
+              </p>
+            )}
+            {fullscreenError && <p className="text-amber-200">{fullscreenError}</p>}
+            {document.fullscreenEnabled ? (
+              <button
+                type="button"
+                onClick={handleEnterFullscreen}
+                className={`${PRIMARY_BTN} rounded-lg px-6 py-3`}
+              >
+                Enter fullscreen
+              </button>
+            ) : (
+              <Link to="/exam-portal" className="inline-block underline">
+                Return to exam portal
+              </Link>
+            )}
+          </section>
+        </div>
+      )}
 
       {/* ── Header ───────────────────────────────────────────────────────── */}
       <header className="h-16 bg-white dark:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-700 flex items-center justify-between px-6 shrink-0 shadow-sm">
@@ -451,7 +514,7 @@ export default function StudentExamSession() {
               {exam.title}
             </h1>
             <p className="text-xs text-neutral-500 dark:text-neutral-400 exam-no-select">
-              {t("exam.secureEnvironment") || "Secure environment"}
+              {t("exam.secureEnvironment") || "Browser exam session"}
               {studentName && ` · ${studentName}`}
             </p>
           </div>
@@ -481,9 +544,27 @@ export default function StudentExamSession() {
         </div>
       </header>
 
+      {storageWarning && (
+        <p role="alert" className="shrink-0 bg-amber-100 px-4 py-2 text-sm text-amber-950">
+          {storageWarning} Server autosave remains available while this page is connected.
+        </p>
+      )}
+      {saveError && (
+        <div role="alert" className="flex shrink-0 items-center justify-between gap-4 bg-red-100 px-4 py-2 text-sm text-red-950">
+          <span>{saveError}</span>
+          <button
+            type="button"
+            onClick={() => setSaveRetry((attempt) => attempt + 1)}
+            className="shrink-0 rounded border border-red-700 px-3 py-1 font-semibold"
+          >
+            Retry save
+          </button>
+        </div>
+      )}
+
       {/* ── Integrity status strip ───────────────────────────────────────── */}
       <div
-        className={`h-9 flex items-center justify-center gap-6 text-xs font-medium shrink-0 border-b exam-no-select ${faultCount > 0 || violationCount > 0
+        className={`h-9 flex items-center justify-center gap-6 text-xs font-medium shrink-0 border-b exam-no-select ${violationCount > 0
           ? "bg-amber-50 border-amber-200 text-amber-800 dark:bg-amber-900/20 dark:border-amber-800 dark:text-amber-300"
           : "bg-[#2C2DE0]/15 border-[#2C2DE0]/40 text-[#1E1FAA] dark:bg-[#2C2DE0]/20 dark:border-[#2C2DE0]/50 dark:text-[#A5A6FF]"
           }`}
@@ -500,14 +581,9 @@ export default function StudentExamSession() {
         <span className="flex items-center gap-1.5">
           <ShieldAlert className="w-3.5 h-3.5" />
           {violationCount === 0
-            ? t("exam.noViolations") || "No violations"
-            : `${violationCount} ${t("exam.violations") || "violation(s)"}`}
-        </span>
-        {faultCount > 0 && (
-          <span className="flex items-center gap-1.5 text-red-600 dark:text-red-400">
-            ⚠️ {faultCount}/{maxFaults} exits
+              ? t("exam.noViolations") || "No violations"
+              : `${violationCount} ${t("exam.violations") || "violation(s)"}`}
           </span>
-        )}
         <span>
           {answeredCount}/{questions.length} {t("exam.answered") || "answered"}
         </span>
@@ -586,7 +662,7 @@ export default function StudentExamSession() {
               {/* ── Lab / answer area ────────────────────────────────────────── */}
               <div className="bg-white dark:bg-neutral-800 rounded-xl p-6 shadow-sm border border-neutral-100 dark:border-neutral-700">
                 {/* Standard questions: MCQ, T/F, Essay */}
-                {["mcq", "truefalse", "essay"].includes(activeQuestion.type) && (
+                {["mcq", "multi_select", "truefalse", "short_answer", "essay"].includes(activeQuestion.type) && (
                   <StandardQuestion
                     question={activeQuestion}
                     value={answers[activeQuestion._id]?.answer}

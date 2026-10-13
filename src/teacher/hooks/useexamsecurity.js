@@ -32,12 +32,13 @@ export default function useExamSecurity({
   const [violations, setViolations] = useState([]);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const lockedRef = useRef(false);
+  const wasFullscreenRef = useRef(false);
   // Stable session identifier for watermark — generated once per hook mount
   const sessionId = useMemo(() => Math.random().toString(36).slice(2, 8).toUpperCase(), []);
 
   const report = useCallback(
     (type, detail) => {
-      if (lockedRef.current) return;
+      if (lockedRef.current || rules.recordViolations === false) return;
       const entry = { type, detail, timestamp: Date.now() };
       setViolations(prev => {
         const next = [...prev, entry];
@@ -49,21 +50,24 @@ export default function useExamSecurity({
       });
       onViolation?.(entry);
     },
-    [onViolation, onMaxViolations, maxViolations]
+    [onViolation, onMaxViolations, maxViolations, rules.recordViolations]
   );
 
-  // Fullscreen: request it, and flag every exit
+  // Fullscreen must be requested by a user gesture in browsers such as Chrome.
   useEffect(() => {
-    if (!enabled || !rules.fullscreenRequired) return;
-
-    document.documentElement.requestFullscreen?.().catch(() => {});
+    if (!enabled) return;
 
     const onChange = () => {
       const fs = !!document.fullscreenElement;
       setIsFullscreen(fs);
-      if (!fs) report("exit_fullscreen", "Left fullscreen mode");
+      if (wasFullscreenRef.current && !fs && rules.fullscreenRequired) {
+        report("exit_fullscreen", "Exited browser fullscreen mode");
+      }
+      wasFullscreenRef.current = fs;
     };
 
+    setIsFullscreen(Boolean(document.fullscreenElement));
+    wasFullscreenRef.current = Boolean(document.fullscreenElement);
     document.addEventListener("fullscreenchange", onChange);
     return () => document.removeEventListener("fullscreenchange", onChange);
   }, [enabled, rules.fullscreenRequired, report]);

@@ -6,7 +6,6 @@ User-agent: *
 Allow: /
 Allow: /about
 Allow: /contact
-Allow: /examguard
 Allow: /pricing
 Allow: /sitemap.xml
 Allow: /robots.txt
@@ -29,7 +28,6 @@ Disallow: /verify-code
 Disallow: /verify-university-id
 Disallow: /oauth-callback
 Disallow: /my-qr
-Disallow: /examguard/download
 Disallow: /uploads
 
 # ── AI crawlers — explicitly allowed ──────────────────────────────────

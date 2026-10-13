@@ -107,13 +107,6 @@
       ]
     },
     {
-      "source": "/examguard/download(.*)",
-      "headers": [
-        { "key": "X-Robots-Tag", "value": "noindex, nofollow" },
-        { "key": "Cache-Control", "value": "no-store" }
-      ]
-    },
-    {
       "source": "/seats(.*)",
       "headers": [
         { "key": "X-Robots-Tag", "value": "noindex, nofollow" },
@@ -155,13 +148,6 @@
     {
       "source": "/(.*)",
       "destination": "/index.html"
-    }
-  ],
-  "redirects": [
-    {
-      "source": "/desktop-exam-app",
-      "destination": "/examguard",
-      "permanent": true
     }
   ]
 }
