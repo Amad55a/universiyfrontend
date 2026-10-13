@@ -8,6 +8,7 @@ import {
 import { motion } from "framer-motion";
 import { useLanguage } from "@/hooks/useLanguage";
 import { useAuth } from "@/context/AuthContext";
+import { Helmet } from "react-helmet-async";
 
 const EMAILJS_SERVICE_ID = "service_n6brldi";
 const EMAILJS_TEMPLATE_ID = "template_6rmubv2";
@@ -54,7 +55,7 @@ const Contact = () => {
       setTimeout(() => setStatus("idle"), 5000);
     } catch (err) {
       console.error("EmailJS error:", err);
-      setErrorMsg(t?.contact?.failed || "Failed to send. Please email us directly at info@elibrary.com");
+      setErrorMsg(t?.contact?.failed || "Failed to send. Please email us directly at info@unicores.tech");
       setStatus("error");
     }
   };
@@ -65,7 +66,29 @@ const Contact = () => {
 
   return (
     <div className="w-full dark:bg-black text-black dark:text-white">
-      {/* ── Hero ───────────────────────────────────────────────── */}
+      <Helmet>
+        <title>Contact UniCORE | Request a Demo or Get Support</title>
+        <meta
+          name="description"
+          content="Contact the UniCORE team to request a demo, ask a question, or get support. We reply within 24 hours."
+        />
+        <link rel="canonical" href="https://www.unicores.tech/contact" />
+        <meta name="robots" content="index, follow" />
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content="https://www.unicores.tech/contact" />
+        <meta property="og:title" content="Contact UniCORE | Request a Demo or Get Support" />
+        <meta
+          property="og:description"
+          content="Contact the UniCORE team to request a demo, ask a question, or get support. We reply within 24 hours."
+        />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content="Contact UniCORE | Request a Demo or Get Support" />
+        <meta
+          name="twitter:description"
+          content="Contact the UniCORE team to request a demo, ask a question, or get support. We reply within 24 hours."
+        />
+      </Helmet>
+
       <section className="w-full bg-white dark:bg-black/90 relative overflow-hidden">
         <div className="w-full max-w-350 mx-auto px-6 lg:px-10 pt-32 pb-16 text-center">
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
@@ -229,7 +252,7 @@ const Contact = () => {
                 {
                   icon: Mail,
                   label: t?.common?.email || "Email",
-                  content: <a href="mailto:info@uniso.com" className="text-sm text-gray-700 dark:text-gray-300 font-medium hover:text-[#2C2DE0] transition-colors">info@euniso.com</a>,
+                  content: <a href="mailto:info@unicores.tech" className="text-sm text-gray-700 dark:text-gray-300 font-medium hover:text-[#2C2DE0] transition-colors">info@unicores.tech</a>,
                 },
                 {
                   icon: MapPin,

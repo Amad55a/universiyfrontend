@@ -24,20 +24,27 @@ const LandingPage = () => {
   return (
     <>
     <Helmet>
-  <title>UniCORE - Academic Digital Ecosystem</title>
-
-  <meta
-    name="description"
-    content="UniCORE is an academic digital ecosystem that unifies learning, communication, attendance, AI, and university services in one platform."
-  />
-
-  <meta
-    name="keywords"
-    content="UniCORE, university management system, LMS, student portal, AI education"
-  />
-
-  <link rel="canonical" href="https://www.unicores.tech/" />
-</Helmet>
+      <title>UniCORE | University Management &amp; Online Exam Platform</title>
+      <meta
+        name="description"
+        content="UniCORE connects students, teachers, and administrators in one platform: secure online exams, digital library, learning resources, and an AI study assistant."
+      />
+      <link rel="canonical" href="https://www.unicores.tech/" />
+      <meta name="robots" content="index, follow" />
+      <meta property="og:type" content="website" />
+      <meta property="og:url" content="https://www.unicores.tech/" />
+      <meta property="og:title" content="UniCORE | University Management &amp; Online Exam Platform" />
+      <meta
+        property="og:description"
+        content="UniCORE connects students, teachers, and administrators in one platform: secure online exams, digital library, learning resources, and an AI study assistant."
+      />
+      <meta name="twitter:card" content="summary_large_image" />
+      <meta name="twitter:title" content="UniCORE | University Management &amp; Online Exam Platform" />
+      <meta
+        name="twitter:description"
+        content="UniCORE connects students, teachers, and administrators in one platform: secure online exams, digital library, learning resources, and an AI study assistant."
+      />
+    </Helmet>
       <Hero       t={t} />
       <Features   t={t} />
       <HowItWorks t={t} />

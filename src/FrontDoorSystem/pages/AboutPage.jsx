@@ -69,9 +69,26 @@ const About = () => {
   return (
     <div className="w-full dark:bg-black text-black dark:text-white">
        <Helmet>
-        <title>About UniCORE - Academic Digital Ecosystem</title>
-        <meta name="description" content="Learn about UniCORE's mission to unify university digital tools." />
+        <title>About UniCORE | University Management Platform</title>
+        <meta
+          name="description"
+          content="Learn about UniCORE, the university management and learning platform built to connect students, teachers, and administrators in one intelligent system."
+        />
         <link rel="canonical" href="https://www.unicores.tech/about" />
+        <meta name="robots" content="index, follow" />
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content="https://www.unicores.tech/about" />
+        <meta property="og:title" content="About UniCORE | University Management Platform" />
+        <meta
+          property="og:description"
+          content="Learn about UniCORE, the university management and learning platform built to connect students, teachers, and administrators in one intelligent system."
+        />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content="About UniCORE | University Management Platform" />
+        <meta
+          name="twitter:description"
+          content="Learn about UniCORE, the university management and learning platform built to connect students, teachers, and administrators in one intelligent system."
+        />
       </Helmet>
       {/* ── Hero ─────────────────────────────────────────────────── */}
       <section className="w-full bg-white dark:bg-black/90 relative overflow-hidden">
@@ -91,7 +108,7 @@ const About = () => {
             </h1>
             <p className="mt-6 text-base text-black dark:text-white max-w-2xl mx-auto leading-relaxed">
               {t?.about?.intro ||
-                "UNICORE is a unified academic platform that combines seat reservation, digital library access, AI-powered learning tools, online examinations, and community collaboration — all in one place."}
+                "UniCORE is a university management and learning platform that combines seat reservation, digital library access, AI-powered learning tools, online examinations, and community collaboration — all in one place."}
             </p>
           </motion.div>
         </div>
@@ -127,7 +144,7 @@ const About = () => {
           <div className="rounded-3xl overflow-hidden border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black p-8 aspect-video flex items-center justify-center">
             <div className="text-center">
               <div className="text-6xl mb-4">📚</div>
-              <p className="text-lg font-black text-gray-900 dark:text-white">UNICORE Library</p>
+              <p className="text-lg font-black text-gray-900 dark:text-white">UniCORE Platform</p>
               <p className="text-sm text-gray-500 dark:text-white/40 mt-1">Mogadishu, Somalia</p>
             </div>
           </div>
@@ -164,7 +181,7 @@ const About = () => {
           </h2>
           <p className="text-gray-500 dark:text-gray-400 mt-5 leading-relaxed text-sm">
             {t?.about?.missionBody1 ||
-              "Wasting hours finding a seat, searching for books, or struggling with difficult texts can be frustrating. We built UNICORE to eliminate these obstacles so you can focus entirely on learning."}
+              "Wasting hours finding a seat, searching for books, or struggling with difficult texts can be frustrating. We built UniCORE to eliminate these obstacles so you can focus entirely on learning."}
           </p>
           <p className="text-gray-500 dark:text-gray-400 mt-3 leading-relaxed text-sm">
             {t?.about?.missionBody2 ||

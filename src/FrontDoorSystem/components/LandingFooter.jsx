@@ -1,6 +1,6 @@
 // LandingFooter.jsx
 import { Link } from "react-router-dom";
-import { Mail, MapPin, BookOpen, FileText, Bot, Users, LayoutDashboard, GraduationCap } from "lucide-react";
+import { Mail, MapPin, BookOpen, FileText, Bot, Shield, LayoutDashboard, MonitorDown } from "lucide-react";
 import UnicoreLogo from "./Logo";
 import { useLanguage } from "@/hooks/useLanguage";
 
@@ -9,12 +9,12 @@ const LandingFooter = () => {
 
   const footerContent = t?.landing?.footer || {};
   const modules = [
-    { icon: BookOpen, label: t?.modules?.library || "Digital Library", to: "/library" },
-    { icon: FileText, label: t?.modules?.exams || "Online Examinations", to: "/exams" },
-    { icon: Bot, label: t?.modules?.aiAssistant || "AI Assistant", to: "/ai" },
-    { icon: Users, label: t?.modules?.forum || "Forum", to: "/forum" },
-    { icon: LayoutDashboard, label: t?.modules?.dashboard || "Dashboard", to: "/dashboard" },
-    { icon: GraduationCap, label: t?.modules?.academic || "Academic Records", to: "/records" },
+    { icon: BookOpen, label: "Digital Library", to: "/contact" },
+    { icon: FileText, label: "Online Examinations", to: "/examguard" },
+    { icon: Bot, label: "AI Study Assistant", to: "/contact" },
+    { icon: MonitorDown, label: "ExamGuard App", to: "/examguard" },
+    { icon: LayoutDashboard, label: "Student Portal", to: "/signup" },
+    { icon: Shield, label: "For Universities", to: "/pricing" },
   ];
 
   return (
@@ -35,9 +35,9 @@ const LandingFooter = () => {
           <div className="flex flex-col gap-2 mt-5">
             <a
 
-              href="mailto:info@elibrary.com"
+              href="mailto:info@unicores.tech"
               className="flex items-center gap-2 text-sm text-black/50 dark:text-white/40 hover:text-[#2C2DE0] transition-colors">
-              <Mail size={13} /> info@uniso.com </a>
+              <Mail size={13} /> info@unicores.tech </a>
             <span className="flex items-center gap-2 text-sm text-black/50 dark:text-white/40">
               <MapPin size={13} />
               {t?.common?.university}, Mogadishu
