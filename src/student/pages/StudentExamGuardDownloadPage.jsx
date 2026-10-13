@@ -7,7 +7,7 @@ import { detectExamGuardPlatform } from "./examguardPlatform";
 const PLATFORMS = [
   { id: "windows", label: "Windows", installer: null, packageType: "NSIS installer" },
   { id: "macos", label: "macOS", installer: null, packageType: "DMG installer" },
-  { id: "linux", label: "Linux", installer: null, packageType: "AppImage" },
+  { id: "linux", label: "Linux", installer: null, packageType: "AppImage or Debian package" },
 ];
 
 export default function StudentExamGuardDownloadPage() {
@@ -34,7 +34,7 @@ export default function StudentExamGuardDownloadPage() {
           <MonitorDown className="h-8 w-8 text-[#2C2DE0]" />
           <div>
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Download UniCORE Desktop Exam App</h1>
-            <p className="text-sm text-gray-600 dark:text-zinc-300">The UniCORE Desktop Exam App opens your secure university exam session in the desktop client.</p>
+            <p className="text-sm text-gray-600 dark:text-zinc-300">The UniCORE Desktop Exam App opens an exam session authorized by UniCORE. It does not provide operating-system lockdown.</p>
           </div>
         </div>
 
@@ -97,8 +97,12 @@ export default function StudentExamGuardDownloadPage() {
             <li>If the browser asks for permission, allow the app launch and retry. A fresh single-use launch code is issued for each deliberate retry.</li>
           </ol>
           <h2 className="pt-3 font-semibold text-gray-900 dark:text-white">System requirements</h2>
-          <p>Use a supported desktop edition of Windows, macOS, or Linux for the UniCORE Desktop Exam App. Linux AppImage packages may require FUSE or extraction support. Exact minimum OS versions and architecture support must be confirmed against tested release artifacts before publication.</p>
+          <p>No platform installer has been published yet. Linux x86_64 is the only configured build target; Windows and macOS installers are not available. Linux AppImage packages may require FUSE or extraction support. The release page will list only tested, published installers.</p>
         </section>
+
+        <Link to="/desktop-exam-app" target="_blank" rel="noreferrer" className="mt-5 inline-flex font-semibold text-[#1E1FAA] underline dark:text-indigo-300">
+          Read the full installation and troubleshooting guide
+        </Link>
 
         <Link to={returnTo} className="mt-6 inline-flex rounded-lg bg-[#2C2DE0] px-5 py-3 font-semibold text-white">
           Return to your exam

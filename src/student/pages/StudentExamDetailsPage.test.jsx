@@ -71,6 +71,9 @@ describe("student exam details and launch", () => {
       );
     });
     expect(openExamGuard).toHaveBeenCalledWith(ticket);
+    const informationLink = screen.getByRole("link", { name: "Installation and fallback instructions" });
+    expect(informationLink).toHaveAttribute("href", "/desktop-exam-app");
+    expect(informationLink).toHaveAttribute("target", "_blank");
   });
 
   it("does not offer ExamGuard for SEB-required or ineligible exams", async () => {

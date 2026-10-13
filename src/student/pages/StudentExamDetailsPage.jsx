@@ -151,7 +151,9 @@ export default function StudentExamDetailsPage() {
             <p className="mt-3 text-sm text-gray-600 dark:text-zinc-300">
               Your browser may ask permission to open ExamGuard. If nothing opens, launch the app manually and retry here.{" "}
               <Link
-                to={`/examguard/download?examId=${encodeURIComponent(exam.id)}`}
+                to="/desktop-exam-app"
+                target="_blank"
+                rel="noreferrer"
                 className="font-semibold text-[#2C2DE0] underline"
               >
                 Installation and fallback instructions

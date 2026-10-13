@@ -71,6 +71,7 @@ import TeacherProfilePage from './teacher/page/TeacherProfilePage';
 import StudentExamPortal from './student/pages/StudentExamPortal';
 import StudentExamDetailsPage from './student/pages/StudentExamDetailsPage';
 import StudentExamGuardDownloadPage from './student/pages/StudentExamGuardDownloadPage';
+import DesktopExamAppPage from './FrontDoorSystem/pages/DesktopExamAppPage';
 import StudentExamSession from './student/pages/StudentExamSession';
 import StudentResultsPage from './student/pages/StudentResultsPage';
 import CommunityLayout from './community/communityLayout';
@@ -123,6 +124,9 @@ createRoot(document.getElementById('root')).render(
                                             <Route path="/" element={<HomePage />} />
                                             <Route path="/about" element={<AboutPage />} />
                                             <Route path="/contact" element={<ContactPage />} />
+                                        </Route>
+                                        <Route element={<LandingLayout />}>
+                                            <Route path="/desktop-exam-app" element={<DesktopExamAppPage />} />
                                         </Route>
 
                                         <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />

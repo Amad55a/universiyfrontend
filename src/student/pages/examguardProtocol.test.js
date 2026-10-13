@@ -4,7 +4,7 @@ import { createExamGuardProtocolUrl, openExamGuard } from "./examguardProtocol";
 describe("ExamGuard protocol launch", () => {
   it("creates a deep link only for a well-formed one-time ticket", () => {
     expect(createExamGuardProtocolUrl("a".repeat(43))).toBe(
-      `examguard://launch?ticket=${"a".repeat(43)}`,
+      `unicore-exam://launch?ticket=${"a".repeat(43)}`,
     );
     expect(() => createExamGuardProtocolUrl("not-a-ticket")).toThrow(/invalid launch ticket/);
   });
@@ -13,6 +13,7 @@ describe("ExamGuard protocol launch", () => {
     const openUrl = vi.fn();
     const ticket = "b".repeat(43);
     openExamGuard(ticket, openUrl);
-    expect(openUrl).toHaveBeenCalledWith(`examguard://launch?ticket=${ticket}`);
+    expect(openUrl).toHaveBeenCalledTimes(1);
+    expect(openUrl).toHaveBeenCalledWith(`unicore-exam://launch?ticket=${ticket}`);
   });
 });
