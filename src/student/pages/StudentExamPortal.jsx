@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { useLanguage } from "../../hooks/useLanguage";
 import { useAuth } from "@/context/AuthContext";
 import { ArrowRight, Lock, Clock, ShieldCheck, Download, Loader2 } from "lucide-react";
+import { openExamGuard } from "./examguardProtocol";
 
 import "../../styles/examtheme.css";
 
@@ -200,7 +201,12 @@ export default function StudentExamPortal() {
       }
 
       setLaunchTicket({ value: issued.ticket, expiresAt });
-      setLaunchTicketMessage("Enter this one-time ticket in ExamGuard. It expires in 60 seconds.");
+      setLaunchTicketMessage("We sent a launch link to your system, but cannot confirm whether ExamGuard opened. The one-time ticket below is your manual fallback.");
+      try {
+        openExamGuard(issued.ticket);
+      } catch {
+        setLaunchTicketMessage("Automatic launch was blocked. Copy this one-time ticket and enter it in ExamGuard manually.");
+      }
       ticketTimerRef.current = setTimeout(() => {
         setLaunchTicket(null);
         setLaunchTicketMessage("The launch ticket expired. Request a new one if needed.");
@@ -220,7 +226,7 @@ export default function StudentExamPortal() {
     }
     try {
       await navigator.clipboard.writeText(launchTicket.value);
-      setLaunchTicketMessage("Ticket copied. Paste it into ExamGuard before it expires.");
+      setLaunchTicketMessage("Ticket copied. Paste it into ExamGuard and choose Verify Invitation before it expires.");
     } catch {
       setLaunchTicketMessage("Copy was unavailable. Select and copy the ticket manually.");
     }
@@ -379,7 +385,7 @@ export default function StudentExamPortal() {
                   className="flex items-center justify-center w-full gap-2 px-5 py-2.5 bg-[#2C2DE0] text-white text-sm font-bold rounded-lg shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150 group"
                 >
                   <ShieldCheck className="w-4 h-4" />
-                  Open UniCORE Exam App
+                  Open ExamGuard
                 </button>
 
                 <div className="flex items-center gap-3 text-xs text-neutral-400">
@@ -493,7 +499,7 @@ export default function StudentExamPortal() {
                       className="block text-sm font-medium text-neutral-700 dark:text-neutral-300"
                       htmlFor="examguard-ticket"
                     >
-                      One-time launch code
+                      One-time launch ticket
                     </label>
                     <input
                       id="examguard-ticket"
@@ -512,8 +518,11 @@ export default function StudentExamPortal() {
                       aria-label="Copy ticket"
                       className="w-full rounded-lg bg-[#2C2DE0] px-6 py-3 text-sm font-semibold text-white"
                     >
-                      Copy launch code
+                      Copy ticket
                     </button>
+                    <p className="text-sm text-neutral-600 dark:text-neutral-300">
+                      If the app did not open, open ExamGuard from your applications menu, paste this ticket, and choose Verify Invitation. The ticket expires shortly and can be redeemed only once.
+                    </p>
                   </>
                 )}
                 {launchTicketMessage && (

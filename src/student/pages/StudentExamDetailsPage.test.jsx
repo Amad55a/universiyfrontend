@@ -59,7 +59,9 @@ describe("student exam details and launch", () => {
 
   it("issues the existing launch ticket only from the launch button and opens ExamGuard", async () => {
     const ticket = "a".repeat(43);
-    api.post.mockResolvedValueOnce({ data: { data: { ticket } } });
+    api.post.mockResolvedValueOnce({
+      data: { data: { ticket, expiresAt: new Date(Date.now() + 60_000).toISOString() } },
+    });
     renderDetails();
 
     fireEvent.click(await screen.findByRole("button", { name: "Open ExamGuard" }));
@@ -71,9 +73,46 @@ describe("student exam details and launch", () => {
       );
     });
     expect(openExamGuard).toHaveBeenCalledWith(ticket);
-    const informationLink = screen.getByRole("link", { name: "Installation and fallback instructions" });
-    expect(informationLink).toHaveAttribute("href", "/desktop-exam-app");
-    expect(informationLink).toHaveAttribute("target", "_blank");
+    expect(await screen.findByLabelText("One-time ExamGuard ticket")).toHaveValue(ticket);
+    expect(screen.getByText(/cannot confirm whether ExamGuard opened/i)).toBeInTheDocument();
+    expect(screen.getByText(/enter this same ticket manually/i)).toBeInTheDocument();
+    const informationLink = screen.getByRole("link", { name: "Open installation guide" });
+    expect(informationLink).toHaveAttribute("href", `/examguard/download?examId=${exam.id}`);
+  });
+
+  it("keeps the ticket available for manual verification if the protocol launch throws", async () => {
+    const ticket = "b".repeat(43);
+    api.post.mockResolvedValueOnce({
+      data: { data: { ticket, expiresAt: new Date(Date.now() + 60_000).toISOString() } },
+    });
+    openExamGuard.mockImplementationOnce(() => {
+      throw new Error("protocol launch failed");
+    });
+    renderDetails();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open ExamGuard" }));
+
+    expect(await screen.findByLabelText("One-time ExamGuard ticket")).toHaveValue(ticket);
+    expect(screen.getByText(/automatic launch was blocked/i)).toBeInTheDocument();
+  });
+
+  it("copies the issued invitation for the desktop manual-entry fallback", async () => {
+    const ticket = "c".repeat(43);
+    api.post.mockResolvedValueOnce({
+      data: { data: { ticket, expiresAt: new Date(Date.now() + 60_000).toISOString() } },
+    });
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    renderDetails();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open ExamGuard" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Copy invitation" }));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(ticket));
+    expect(await screen.findByText(/Ticket copied/)).toBeInTheDocument();
   });
 
   it("does not offer ExamGuard for SEB-required or ineligible exams", async () => {

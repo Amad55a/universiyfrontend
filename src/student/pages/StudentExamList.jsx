@@ -55,7 +55,7 @@ export default function StudentExamList() {
           <button type="button" onClick={() => refetch()} className="mt-2 font-semibold underline">Try again</button>
         </div>
       ) : exams.length === 0 ? (
-        <p className="py-5 text-sm text-gray-500 dark:text-zinc-400">No upcoming or available exams were found for your enrolled classes.</p>
+        <p className="py-5 text-sm text-gray-500 dark:text-zinc-400">No upcoming or available exams are currently listed for your account.</p>
       ) : (
         <ul className="space-y-2">
           {exams.map((exam) => (

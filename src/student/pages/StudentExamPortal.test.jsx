@@ -4,10 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import api from "@/api/client";
 import StudentExamPortal from "./StudentExamPortal";
+import { openExamGuard } from "./examguardProtocol";
 
 vi.mock("@/api/client", () => ({
   default: { post: vi.fn() },
 }));
+vi.mock("./examguardProtocol", () => ({ openExamGuard: vi.fn() }));
 vi.mock("../../hooks/useLanguage", () => ({
   useLanguage: () => ({ t: (key) => key }),
 }));
@@ -34,6 +36,7 @@ function renderPortal() {
 describe("ExamGuard launch ticket handoff", () => {
   beforeEach(() => {
     api.post.mockReset();
+    openExamGuard.mockReset();
     localStorage.clear();
     Object.defineProperty(window, "SafeExamBrowser", {
       configurable: true,
@@ -60,6 +63,8 @@ describe("ExamGuard launch ticket handoff", () => {
 
     const ticketInput = await screen.findByLabelText("One-time ExamGuard ticket");
     expect(ticketInput).toHaveValue(ticket);
+    expect(openExamGuard).toHaveBeenCalledWith(ticket);
+    expect(await screen.findByText(/cannot confirm whether ExamGuard opened/i)).toBeInTheDocument();
     expect(api.post).toHaveBeenLastCalledWith(
       `/exams/student/${validExam.examId}/launch-ticket`,
       {},
