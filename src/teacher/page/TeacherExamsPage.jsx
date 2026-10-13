@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 import { toast } from "sonner";
-import { Plus, X, BookOpen, Sparkles, ShieldCheck } from "lucide-react";
+import { Plus, X, BookOpen, Sparkles } from "lucide-react";
 import { Link } from "react-router-dom";
 import QuestionEditor from "../components/Questioneditor";
 import QuestionBankPicker from "../components/Questionbankpicker";
@@ -32,37 +32,6 @@ const QUESTION_TYPES = [
   { type: "networking_lab", label: "Add Cisco Lab", variant: "neutral" },
 ];
 
-// Every checkbox in the "Exam Security" panel. `key` matches the field name
-// sent to / received from the backend's `security` object.
-const SECURITY_OPTIONS = [
-  { key: "fullscreenRequired", label: "Full Screen" },
-  { key: "sebRequired", label: "Require Safe Exam Browser" },
-  { key: "disableCopy", label: "Disable Copy" },
-  { key: "disablePaste", label: "Disable Paste" },
-  { key: "disableRightClick", label: "Disable Right Click" },
-  { key: "detectTabSwitch", label: "Detect Tab Switch" },
-  { key: "autoSubmit", label: "Auto Submit" },
-  { key: "shuffleQuestions", label: "Shuffle Questions" },
-  { key: "shuffleAnswers", label: "Shuffle Answers" },
-  { key: "recordViolations", label: "Record Violations" },
-];
-
-const DEFAULT_SECURITY = {
-  fullscreenRequired: true,
-  cameraRequired: false,
-  microphoneRequired: false,
-  browserLock: false,
-  sebRequired: false,
-  disableCopy: true,
-  disablePaste: true,
-  disableRightClick: true,
-  detectTabSwitch: true,
-  autoSubmit: true,
-  shuffleQuestions: false,
-  shuffleAnswers: false,
-  recordViolations: true,
-};
-
 const DEFAULT_EXAM_FORM = {
   title: "",
   instructions: "",
@@ -71,7 +40,7 @@ const DEFAULT_EXAM_FORM = {
   availableUntil: "",
   timeLimit: 60,
   status: "draft",
-  security: { ...DEFAULT_SECURITY },
+  security: {},
   questions: [],
 };
 
@@ -148,13 +117,6 @@ export default function TeacherExamsPage() {
       q[qIndex] = { ...q[qIndex], options };
       return { ...prev, questions: q };
     });
-  };
-
-  const toggleSecurity = (key) => {
-    setExamForm(prev => ({
-      ...prev,
-      security: { ...prev.security, [key]: !prev.security[key] },
-    }));
   };
 
   const saveExam = async statusOverride => {
@@ -243,27 +205,6 @@ export default function TeacherExamsPage() {
     }
   };
 
-  // Downloads the .seb config file the teacher hands out to students. Only
-  // meaningful when security.sebRequired is on for that exam (see backend
-  // downloadSebConfig, which 400s otherwise).
-  const downloadSebConfig = async examId => {
-    try {
-      const res = await axios.get(`/api/exams/teacher/${examId}/seb-config`, {
-        responseType: "blob",
-      });
-      const url = window.URL.createObjectURL(new Blob([res.data]));
-      const link = document.createElement("a");
-      link.href = url;
-      link.setAttribute("download", `${examId}.seb`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Failed to download Safe Exam Browser config");
-    }
-  };
-
   const alreadyAddedBankIds = examForm.questions
     .map(q => q.sourceQuestionId)
     .filter(Boolean);
@@ -347,44 +288,6 @@ export default function TeacherExamsPage() {
                 />
               </div>
             </div>
-          </div>
-
-          {/* Exam Security */}
-          <div className="mb-8 border-t pt-6 dark:border-neutral-700">
-            <h2 className="font-display text-lg font-semibold mb-4">Exam security</h2>
-
-            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 p-4 rounded-lg mb-4">
-              <p className="text-sm text-blue-900 dark:text-blue-200">
-                <span className="font-semibold">Browser-based exam security:</span> Only fullscreen mode and browser/tab monitoring are enforced in a normal Chrome session.
-              </p>
-              <p className="text-xs text-blue-800 dark:text-blue-300 mt-2">
-                Optional: Enable "Require Safe Exam Browser" below for stronger lockdown behavior on supported platforms.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {SECURITY_OPTIONS.map(({ key, label }) => (
-                <label key={key} className="flex items-center gap-2 text-sm cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={!!examForm.security[key]}
-                    onChange={() => toggleSecurity(key)}
-                    className="w-4 h-4 accent-[#2C2DE0]"
-                  />
-                  {label}
-                </label>
-              ))}
-            </div>
-            {examForm.security.sebRequired && (
-              <div className="mt-4 flex items-start gap-2 text-xs text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg border border-blue-100 dark:border-blue-800/50">
-                <ShieldCheck className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>
-                  Students will only be able to enter this exam from inside Safe Exam Browser.
-                  After saving the exam, come back here to download the <code className="font-mono">.seb</code> config
-                  file and share it with your students — they open that file to launch the exam.
-                </span>
-              </div>
-            )}
           </div>
 
           {/* Questions */}
@@ -481,11 +384,6 @@ export default function TeacherExamsPage() {
           <div key={exam._id} className="bg-white dark:bg-neutral-800 rounded-2xl p-6 shadow-sm border border-neutral-100 dark:border-neutral-700">
             <div className="flex items-start justify-between gap-2 mb-1">
               <h3 className="font-display font-semibold text-lg dark:text-white">{exam.title}</h3>
-              {exam.security?.sebRequired && (
-                <span title="Requires Safe Exam Browser" className="shrink-0 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 px-2 py-1 rounded-full">
-                  <ShieldCheck className="w-3 h-3" /> SEB
-                </span>
-              )}
             </div>
             <p className="text-sm text-neutral-500 mb-4">{exam.classId?.classCode || "Class"} • {exam.questions.length} questions</p>
 
@@ -513,14 +411,6 @@ export default function TeacherExamsPage() {
               {exam.status === "draft" && (
                 <button onClick={() => publishExam(exam._id)} className="flex-1 bg-[#2C2DE0] hover:bg-[#2C2DE0] text-white py-2 rounded-lg font-medium text-sm transition-colors">
                   {t?.exam?.publish || "Publish"}
-                </button>
-              )}
-              {exam.security?.sebRequired && (
-                <button
-                  onClick={() => downloadSebConfig(exam._id)}
-                  className="flex-1 bg-blue-100 hover:bg-blue-200 dark:bg-blue-900/40 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 py-2 rounded-lg font-medium text-sm transition-colors flex items-center justify-center gap-1.5"
-                >
-                  <ShieldCheck className="w-4 h-4" /> Download .seb
                 </button>
               )}
             </div>

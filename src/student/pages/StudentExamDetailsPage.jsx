@@ -121,17 +121,17 @@ export default function StudentExamDetailsPage() {
           {exam.sebRequired && (
             <p className="mt-3 flex items-start gap-2 text-sm text-amber-800 dark:text-amber-300">
               <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
-              Safe Exam Browser is required. ExamGuard launch is disabled for this exam.
+              Safe Exam Browser is required. The UniCORE Exam App is the supported secure desktop client for this exam.
             </p>
           )}
           {exam.security?.microphoneRequired && (
             <p className="mt-3 text-sm text-amber-800 dark:text-amber-300">
-              This exam requires microphone monitoring, which ExamGuard does not currently support. The desktop launch is blocked.
+              This exam requires microphone monitoring, which the UniCORE desktop app does not currently support. The desktop launch is blocked.
             </p>
           )}
           {exam.security?.browserLock && (
             <p className="mt-3 text-sm text-amber-800 dark:text-amber-300">
-              This exam requires a managed browser lock, which ExamGuard does not currently provide. The desktop launch is blocked.
+              This exam requires a managed browser lock, which the UniCORE desktop app does not currently provide. The desktop launch is blocked.
             </p>
           )}
         </section>
@@ -142,10 +142,11 @@ export default function StudentExamDetailsPage() {
               type="button"
               onClick={handleOpenExamGuard}
               disabled={launching}
+              aria-label={exam.attemptStatus === "in-progress" ? "Resume in ExamGuard" : "Open ExamGuard"}
               className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#2C2DE0] px-5 py-3 font-semibold text-white disabled:opacity-60 sm:w-auto"
             >
               {launching ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              {launching ? "Preparing secure launch…" : exam.attemptStatus === "in-progress" ? "Resume in ExamGuard" : "Open ExamGuard"}
+              {launching ? "Preparing secure launch…" : exam.attemptStatus === "in-progress" ? "Resume in UniCORE Exam App" : "Open UniCORE Exam App"}
             </button>
             <p className="mt-3 text-sm text-gray-600 dark:text-zinc-300">
               Your browser may ask permission to open ExamGuard. If nothing opens, launch the app manually and retry here.{" "}

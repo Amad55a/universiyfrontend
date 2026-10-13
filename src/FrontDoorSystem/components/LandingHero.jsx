@@ -165,6 +165,55 @@ const Hero = ({ t }) => (
 
 
     </div>
+
+    <div className="relative border-t border-black/10 bg-white/80 dark:border-white/10 dark:bg-black/80 backdrop-blur-sm">
+      <div className="mx-auto max-w-6xl px-6 py-16 lg:px-10">
+        <div className="rounded-3xl border border-[#2C2DE0]/15 bg-[#F5F6FF] p-8 shadow-sm dark:border-[#2C2DE0]/25 dark:bg-[#0E122D] sm:p-10">
+          <div className="grid gap-8 lg:grid-cols-[1.3fr_0.9fr] lg:items-center">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#2C2DE0]">Secure assessment</p>
+              <h2 className="mt-3 text-3xl font-black tracking-tight text-black dark:text-white sm:text-4xl">
+                Take Exams Securely with UniCORE
+              </h2>
+              <p className="mt-4 max-w-xl text-base text-black/65 dark:text-white/70">
+                Use the UniCORE Desktop Exam App to access supported secure exam sessions, save your answers, and submit your exams reliably.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-3 sm:flex-row lg:flex-col">
+              <a
+                href="/exam-portal"
+                className="inline-flex items-center justify-center rounded-xl bg-[#2C2DE0] px-5 py-3 text-sm font-bold text-white shadow-[0_4px_0_#1E1FAA] transition hover:-translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA]"
+              >
+                Open Exam Portal
+              </a>
+              <Link
+                to="/examguard/download"
+                className="inline-flex items-center justify-center rounded-xl border border-[#2C2DE0]/20 bg-white px-5 py-3 text-sm font-bold text-[#2C2DE0] transition hover:bg-[#2C2DE0]/5 dark:bg-transparent dark:text-white"
+              >
+                Download Desktop App
+              </Link>
+            </div>
+          </div>
+
+          <div className="mt-8 grid gap-4 sm:grid-cols-3">
+            {[
+              { label: "Windows", detail: "Desktop installer" },
+              { label: "macOS", detail: "Desktop installer" },
+              { label: "Linux", detail: "AppImage or package" },
+            ].map((os) => (
+              <div key={os.label} className="rounded-2xl border border-black/10 bg-white/70 p-4 dark:border-white/10 dark:bg-black/20">
+                <div className="text-sm font-bold text-black dark:text-white">{os.label}</div>
+                <div className="mt-1 text-xs text-black/60 dark:text-white/60">{os.detail}</div>
+              </div>
+            ))}
+          </div>
+          <p className="mt-6 text-sm text-black/60 dark:text-white/60">
+            Supported install options vary by release availability. Confirm the current desktop build and app version in the download page before beginning an assessment.
+          </p>
+        </div>
+      </div>
+    </div>
   </section>
 );
 

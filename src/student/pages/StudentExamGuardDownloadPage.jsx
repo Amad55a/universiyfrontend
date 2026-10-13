@@ -33,8 +33,8 @@ export default function StudentExamGuardDownloadPage() {
         <div className="flex items-center gap-3">
           <MonitorDown className="h-8 w-8 text-[#2C2DE0]" />
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Download ExamGuard</h1>
-            <p className="text-sm text-gray-600 dark:text-zinc-300">ExamGuard opens your UniCORE exam in the desktop application.</p>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Download UniCORE Desktop Exam App</h1>
+            <p className="text-sm text-gray-600 dark:text-zinc-300">The UniCORE Desktop Exam App opens your secure university exam session in the desktop client.</p>
           </div>
         </div>
 
@@ -73,15 +73,15 @@ export default function StudentExamGuardDownloadPage() {
 
         <section className="mt-6 rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100" aria-live="polite">
           {selected?.installer ? (
-            <a href={selected.installer} className="inline-flex items-center gap-2 font-semibold underline">
-              <Download className="h-4 w-4" /> Download ExamGuard for {selected.label}
+            <a href={selected.installer} aria-label="Download ExamGuard" className="inline-flex items-center gap-2 font-semibold underline">
+              <Download className="h-4 w-4" /> Download UniCORE Desktop Exam App for {selected.label}
             </a>
           ) : (
             <>
               <h2 className="font-semibold">{selected ? `${selected.label} installer not published yet` : "Select a platform"}</h2>
               <p className="mt-1 text-sm">
                 {selected
-                  ? `A ${selected.packageType} release artifact is not available yet. This page will show an official download link after a real installer is published.`
+                  ? `A ${selected.packageType} release artifact is not available yet. This page will show the official UniCORE Desktop Exam App installer after a tested build is published.`
                   : "Choose Windows, macOS, or Linux to check its release status."}
               </p>
             </>
@@ -91,13 +91,13 @@ export default function StudentExamGuardDownloadPage() {
         <section className="mt-6 space-y-2 text-sm text-gray-700 dark:text-zinc-300">
           <h2 className="font-semibold text-gray-900 dark:text-white">Install and launch</h2>
           <ol className="list-inside list-decimal space-y-1">
-            <li>Download the official installer when it becomes available.</li>
-            <li>Install ExamGuard using your operating system’s installer prompts.</li>
-            <li>Return to your UniCORE exam details page and select <strong>Open ExamGuard</strong>.</li>
-            <li>If the protocol prompt is blocked, open ExamGuard manually, return to the exam page, and retry. A fresh single-use ticket will be requested for each deliberate retry.</li>
+            <li>Download the official UniCORE Desktop Exam App installer when it is published.</li>
+            <li>Install the desktop app using your operating system’s installer prompts.</li>
+            <li>Return to your exam page and select <strong>Open UniCORE Exam App</strong>.</li>
+            <li>If the browser asks for permission, allow the app launch and retry. A fresh single-use launch code is issued for each deliberate retry.</li>
           </ol>
           <h2 className="pt-3 font-semibold text-gray-900 dark:text-white">System requirements</h2>
-          <p>Use a desktop edition of Windows, macOS, or Linux supported by the ExamGuard Electron release. Linux AppImage packages may require FUSE or extraction support. Exact minimum OS versions and architecture support must be confirmed against tested release artifacts before publication.</p>
+          <p>Use a supported desktop edition of Windows, macOS, or Linux for the UniCORE Desktop Exam App. Linux AppImage packages may require FUSE or extraction support. Exact minimum OS versions and architecture support must be confirmed against tested release artifacts before publication.</p>
         </section>
 
         <Link to={returnTo} className="mt-6 inline-flex rounded-lg bg-[#2C2DE0] px-5 py-3 font-semibold text-white">

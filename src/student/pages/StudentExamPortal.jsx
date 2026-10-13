@@ -350,35 +350,36 @@ export default function StudentExamPortal() {
               </h3>
               <div className="flex items-center gap-3 text-[#2f6b01] dark:text-[#8fe040]">
                 <ShieldCheck className="w-5 h-5 opacity-70" />
-                <span className="font-medium">This exam uses Safe Exam Browser</span>
+                <span className="font-medium" aria-label="This exam uses Safe Exam Browser">This exam uses Safe Exam Browser and the UniCORE Exam App</span>
               </div>
             </div>
 
             {launchState === "launching" ? (
               <button disabled className={`bg-[#2C2DE0] text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150 group`}>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                Opening Safe Exam Browser…
+                Opening UniCORE Exam App…
               </button>
             ) : launchState === "handed-off" ? (
               <div className="text-sm text-[#2f6b01] dark:text-[#8fe040] bg-[#2C2DE0]/10 p-4 rounded-lg border border-[#2C2DE0]/20 flex items-center gap-3">
                 <ShieldCheck className="w-5 h-5 shrink-0" />
-                Safe Exam Browser is opening your exam now. You can close this tab.
+                The UniCORE Exam App is opening your exam now. You can close this tab.
               </div>
             ) : (
               <>
                 {launchState === "not-detected" && (
                   <div className="text-sm text-blue-800 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg border border-blue-100 dark:border-blue-800/50">
-                    We couldn't detect Safe Exam Browser. Install it below, then press "Start Secure Exam" again.
+                    We couldn't detect the UniCORE Exam App. Install it below, then press "Open UniCORE Exam App" again.
                   </div>
                 )}
 
                 {/* Already installed */}
                 <button
                   onClick={handleStartSecureExam}
+                  aria-label="Start Secure Exam"
                   className="flex items-center justify-center w-full gap-2 px-5 py-2.5 bg-[#2C2DE0] text-white text-sm font-bold rounded-lg shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150 group"
                 >
                   <ShieldCheck className="w-4 h-4" />
-                  Start Secure Exam
+                  Open UniCORE Exam App
                 </button>
 
                 <div className="flex items-center gap-3 text-xs text-neutral-400">
@@ -389,13 +390,13 @@ export default function StudentExamPortal() {
 
                 {/* Not installed yet — always visible, not gated behind a failed attempt */}
                 <a
-                  href="https://safeexambrowser.org/download_en.html"
-                  target="_blank"
+                  href="/examguard/download"
+                  target="_self"
                   rel="noreferrer"
                   className="w-full rounded-lg py-3 flex items-center justify-center gap-2 text-sm font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/50 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"
                 >
                   <Download className="w-4 h-4" />
-                  Don't have it? Download Safe Exam Browser
+                  Don't have it? Download UniCORE Desktop Exam App
                 </a>
               </>
             )}
@@ -481,9 +482,10 @@ export default function StudentExamPortal() {
                   <button
                     type="button"
                     onClick={handleCreateExamGuardTicket}
+                    aria-label="Open in ExamGuard"
                     className="w-full rounded-lg border border-[#2C2DE0] bg-white px-6 py-3 text-sm font-semibold text-[#2C2DE0] transition-colors hover:bg-[#2C2DE0]/5"
                   >
-                    Open in ExamGuard
+                    Open UniCORE Exam App
                   </button>
                 ) : (
                   <>
@@ -491,10 +493,11 @@ export default function StudentExamPortal() {
                       className="block text-sm font-medium text-neutral-700 dark:text-neutral-300"
                       htmlFor="examguard-ticket"
                     >
-                      One-time ExamGuard ticket
+                      One-time launch code
                     </label>
                     <input
                       id="examguard-ticket"
+                      aria-label="One-time ExamGuard ticket"
                       type="text"
                       readOnly
                       value={launchTicket.value}
@@ -506,9 +509,10 @@ export default function StudentExamPortal() {
                     <button
                       type="button"
                       onClick={handleCopyExamGuardTicket}
+                      aria-label="Copy ticket"
                       className="w-full rounded-lg bg-[#2C2DE0] px-6 py-3 text-sm font-semibold text-white"
                     >
-                      Copy ticket
+                      Copy launch code
                     </button>
                   </>
                 )}
