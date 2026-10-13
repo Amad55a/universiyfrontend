@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import { useSearchParams, Link } from "react-router-dom";
-import { Camera, CameraOff, RefreshCw, ShieldAlert, Users } from "lucide-react";
+import { Camera, CameraOff, Mic, MicOff, RefreshCw, ShieldAlert, Users } from "lucide-react";
 
 /**
  * Teacher live exam monitor — who is in the exam + latest camera snapshot.
@@ -27,9 +27,12 @@ export default function TeacherExamLiveMonitor() {
   }, [examId]);
 
   useEffect(() => {
-    load();
+    const initialLoad = setTimeout(() => void load(), 0);
     const t = setInterval(load, 5000);
-    return () => clearInterval(t);
+    return () => {
+      clearTimeout(initialLoad);
+      clearInterval(t);
+    };
   }, [load]);
 
   if (!examId) {
@@ -60,7 +63,7 @@ export default function TeacherExamLiveMonitor() {
             Live exam monitor
           </h1>
           <p className="text-sm text-neutral-500 mt-1">
-            {data?.exam?.title || "Exam"} — camera snapshots for lecturer review (not auto-punish)
+            {data?.exam?.title || "Exam"} — camera snapshots and device status for lecturer review; microphone audio is not recorded
           </p>
         </div>
         <div className="flex gap-2">
@@ -79,19 +82,24 @@ export default function TeacherExamLiveMonitor() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {[
           { label: "Total", value: counts.total, icon: Users },
           { label: "In progress", value: counts.inProgress, icon: Users },
           { label: "Online now", value: counts.online, icon: Camera },
-          { label: "Camera missing", value: counts.cameraMissing, icon: CameraOff },
-        ].map(({ label, value, icon: Icon }) => (
+          ...(data?.exam?.cameraRequired
+            ? [{ label: "Camera missing", value: counts.cameraMissing, icon: CameraOff }]
+            : []),
+          ...(data?.exam?.microphoneRequired
+            ? [{ label: "Microphone missing", value: counts.microphoneMissing, icon: MicOff }]
+            : []),
+        ].map(({ label, value, icon }) => (
           <div
             key={label}
             className="rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 p-4"
           >
             <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-neutral-500">
-              <Icon className="w-3.5 h-3.5" /> {label}
+              {React.createElement(icon, { className: "w-3.5 h-3.5" })} {label}
             </div>
             <div className="text-2xl font-bold mt-1 text-neutral-900 dark:text-white">{value ?? 0}</div>
           </div>
@@ -123,14 +131,26 @@ export default function TeacherExamLiveMonitor() {
               >
                 {s.online ? "LIVE" : s.status}
               </span>
-              <span
-                className={`absolute top-2 right-2 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${
-                  s.cameraOk ? "bg-emerald-600 text-white" : "bg-red-600 text-white"
-                }`}
-              >
-                {s.cameraOk ? <Camera className="w-3 h-3" /> : <CameraOff className="w-3 h-3" />}
-                {s.cameraOk ? "Cam" : "No cam"}
-              </span>
+              <div className="absolute top-2 right-2 flex flex-col items-end gap-1">
+                {data?.exam?.cameraRequired && <span
+                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                    s.cameraOk ? "bg-emerald-600 text-white" : "bg-red-600 text-white"
+                  }`}
+                >
+                  {s.cameraOk ? <Camera className="w-3 h-3" /> : <CameraOff className="w-3 h-3" />}
+                  {s.cameraOk ? "Cam" : "No cam"}
+                </span>}
+                {data?.exam?.microphoneRequired && <span
+                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                    s.microphoneOk ? "bg-emerald-600 text-white" : "bg-red-600 text-white"
+                  }`}
+                  aria-label={s.microphoneOk ? "Microphone online" : "Microphone missing"}
+                  title="Microphone status only; audio is not recorded"
+                >
+                  {s.microphoneOk ? <Mic className="w-3 h-3" /> : <MicOff className="w-3 h-3" />}
+                  {s.microphoneOk ? "Mic" : "No mic"}
+                </span>}
+              </div>
             </div>
             <div className="p-3 space-y-1">
               <div className="font-semibold text-sm text-neutral-900 dark:text-white truncate">
