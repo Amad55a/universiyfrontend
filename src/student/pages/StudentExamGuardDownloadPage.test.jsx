@@ -35,5 +35,6 @@ describe("ExamGuard download page", () => {
     expect(screen.getByText("Platform detected: Linux.")).toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: "Return to your exam" })[0]).toHaveAttribute("href", "/exams/507f1f77bcf86cd799439011");
     expect(screen.getByText(/Linux installer not published yet/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /full installation and troubleshooting guide/i })).toHaveAttribute("href", "/desktop-exam-app");
   });
 });

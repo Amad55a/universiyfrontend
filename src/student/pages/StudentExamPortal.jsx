@@ -390,8 +390,8 @@ export default function StudentExamPortal() {
 
                 {/* Not installed yet — always visible, not gated behind a failed attempt */}
                 <a
-                  href="/examguard/download"
-                  target="_self"
+                  href="/desktop-exam-app"
+                  target="_blank"
                   rel="noreferrer"
                   className="w-full rounded-lg py-3 flex items-center justify-center gap-2 text-sm font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/50 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"
                 >
