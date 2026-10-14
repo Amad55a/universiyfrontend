@@ -4,6 +4,7 @@
 import React, { useState } from "react";
 import { X, ChevronDown, ChevronUp, Terminal, Lock, Plus, Trash2 } from "lucide-react";
 import ImageUploadField from "./ImageUploadField";
+import { LINUX_TERMINAL_ENABLED } from "../../config/features";
 
 const LAB_LANGUAGES = [
   { id: "python",     label: "Python",     ext: ".py",   icon: "🐍" },
@@ -149,16 +150,11 @@ function LinuxLabEditor({ question, index, onUpdate }) {
       <div className="rounded-lg  dark:bg-[#2C2DE0]/20 border border-[#2C2DE0] dark:border-[#2C2DE0] p-3 flex gap-3 items-start">
         <Terminal className="w-4 h-4 text-[#2C2DE0] dark:text-[#2C2DE0] mt-0.5 shrink-0" />
         <div className="text-xs text-[#2C2DE0] dark:text-[#2C2DE0] space-y-1">
-          <p>
-            <strong>Real Linux terminal</strong> — each student gets an isolated Docker container
-            (Ubuntu 22.04, no internet). Commands run live on the server.
-          </p>
-          <p>
-            Students can run any shell commands: <code className="font-mono  dark:bg-[#2C2DE0] px-1 rounded">mkdir</code>,{" "}
-            <code className="font-mono  px-1 rounded">nano</code>,{" "}
-            <code className="font-mono   px-1 rounded">gcc</code>,{" "}
-            <code className="font-mono   px-1 rounded">python3</code>, etc.
-          </p>
+          {LINUX_TERMINAL_ENABLED ? (
+            <p><strong>Isolated Linux terminal</strong> — students run commands in a sandboxed Docker container.</p>
+          ) : (
+            <p><strong>Temporarily unavailable.</strong> Existing Linux Terminal activities cannot be run or added while this feature is disabled.</p>
+          )}
         </div>
       </div>
 

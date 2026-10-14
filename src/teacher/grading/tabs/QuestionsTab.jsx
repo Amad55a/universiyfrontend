@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import AiAssistPanel from "../AiAssistPanel";
 import LinuxLab from "../../components/LinuxLab";
+import { LINUX_TERMINAL_ENABLED } from "../../../config/features";
 
 /**
  * Extracts student code and language reliably from any answer format.
@@ -257,7 +258,11 @@ export default function QuestionsTab({ submission, grades, onUpdateGrade, examId
                     </div>
 
                     {/* If we have a recorded session id, show a read-only terminal viewer */}
-                    {sessionId ? (
+                    {qType === "os_linux" && !LINUX_TERMINAL_ENABLED ? (
+                      <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200">
+                        Linux Terminal is temporarily unavailable; the saved terminal session cannot be opened.
+                      </div>
+                    ) : sessionId ? (
                       <div className="w-full rounded-xl overflow-hidden border border-zinc-800 bg-zinc-950 max-h-80">
                         <LinuxLab initialSessionId={sessionId} readOnly={true} examId={examId} />
                       </div>
@@ -436,4 +441,3 @@ function TypeBadge({ type }) {
     </span>
   );
 }
-

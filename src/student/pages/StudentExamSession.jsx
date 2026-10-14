@@ -46,6 +46,7 @@ import LinuxLab from "@/teacher/components/LinuxLab";
 import DesignLab from "@/teacher/components/DesignLab";
 import NetworkingLab from "@/teacher/components/NetworkingLab";
 import WindowsLab from "@/teacher/components/WindowsLab";
+import { LINUX_TERMINAL_ENABLED } from "@/config/features";
 
 // ─── Shared Duolingo-style primary button ─────────────────────────────────────
 const PRIMARY_BTN =
@@ -687,7 +688,15 @@ export default function StudentExamSession() {
                   reconnects to the SAME Docker container instead of spawning
                   a new one every time the student navigates back.
                 ─────────────────────────────────────────────────────────── */}
-                {activeQuestion.type === "os_linux" && (
+                {activeQuestion.type === "os_linux" && !LINUX_TERMINAL_ENABLED && (
+                  <div
+                    role="status"
+                    className="rounded-xl border border-amber-300 bg-amber-50 p-5 text-amber-900 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200"
+                  >
+                    Linux Terminal is temporarily unavailable. Your other exam answers are unaffected.
+                  </div>
+                )}
+                {activeQuestion.type === "os_linux" && LINUX_TERMINAL_ENABLED && (
                   <LinuxLab
                     key={activeQuestion._id}
                     examId={examId}

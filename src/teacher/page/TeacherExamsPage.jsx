@@ -7,6 +7,7 @@ import QuestionEditor from "../components/Questioneditor";
 import QuestionBankPicker from "../components/Questionbankpicker";
 import AIQuestionGenerator from "../components/Aiquestiongenerator";
 import { useTeacherLanguage } from "../hooks/useLanguages";
+import { LINUX_TERMINAL_ENABLED } from "../../config/features";
 
 import "../../styles/examtheme.css";
 
@@ -31,7 +32,6 @@ const QUESTION_TYPES = [
   { type: "essay", label: "Add Essay", variant: "primary" },
   { type: "lab", label: "Add Code Lab", variant: "neutral" },
   { type: "os_windows", label: "Add OS Windows", variant: "neutral" },
-  { type: "os_linux", label: "Add OS Linux", variant: "neutral" },
   { type: "design_lab", label: "Add Design Lab", variant: "neutral" },
   { type: "networking_lab", label: "Add Cisco Lab", variant: "neutral" },
 ];
@@ -82,6 +82,10 @@ export default function TeacherExamsPage() {
   }, []);
 
   const addQuestion = type => {
+    if (type === "os_linux" && !LINUX_TERMINAL_ENABLED) {
+      toast.error("Linux Terminal activities are temporarily unavailable.");
+      return;
+    }
     setExamForm(prev => ({
       ...prev,
       questions: [
@@ -94,6 +98,10 @@ export default function TeacherExamsPage() {
   // Called by the Question Bank picker (selected items). Kept generic so it
   // can be reused for any other bulk-add source in the future.
   const addQuestionsFromBank = newQuestions => {
+    if (!LINUX_TERMINAL_ENABLED && newQuestions.some(question => question.type === "os_linux")) {
+      toast.error("Linux Terminal activities are temporarily unavailable.");
+      return;
+    }
     setExamForm(prev => ({ ...prev, questions: [...prev.questions, ...newQuestions] }));
   };
 
@@ -146,6 +154,10 @@ export default function TeacherExamsPage() {
 
     if (examForm.questions.length === 0) {
       toast.error("Please add at least one question to the exam.");
+      return;
+    }
+    if (!LINUX_TERMINAL_ENABLED && examForm.questions.some(question => question.type === "os_linux")) {
+      toast.error("Linux Terminal activities are temporarily unavailable.");
       return;
     }
 
