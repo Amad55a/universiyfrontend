@@ -170,6 +170,9 @@ describe("HTML submission source display", () => {
     expect(screen.getByText(/index\.html/)).toBeTruthy();
     expect(screen.getByText(/style\.css/)).toBeTruthy();
     expect(screen.getByText(/main\.js/)).toBeTruthy();
+    expect(screen.getByText("HTML")).toBeTruthy();
+    expect(screen.getByText("CSS")).toBeTruthy();
+    expect(screen.getByText("JavaScript")).toBeTruthy();
     const htmlSource = [...container.querySelectorAll("pre")]
       .find((pre) => pre.textContent?.includes("notExecuted"));
     expect(htmlSource?.querySelector("script")).toBeNull();
