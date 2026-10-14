@@ -10,9 +10,17 @@ export function useDesigns(getCanvasJSONForPage: (pageId: string) => string) {
   const [activePageId, setActivePageId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const pagesRef = useRef(pages);
+  pagesRef.current = pages;
   const activeIdRef = useRef<string | null>(null);
   const activePageIdRef = useRef<string | null>(null);
+  const canvasSizeRef = useRef<{ width: number; height: number } | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const reportError = useCallback((message: string) => {
+    setError(message);
+  }, []);
 
   // Keep activePageIdRef in sync
   useEffect(() => {
@@ -21,6 +29,9 @@ export function useDesigns(getCanvasJSONForPage: (pageId: string) => string) {
 
   // Load designs + templates on mount
   useEffect(() => {
+    // These catalogues populate optional sidebar lists. They must never gate
+    // the actual exam canvas or a saved design's restoration.
+    setLoading(false);
     (async () => {
       try {
         const [d, t] = await Promise.all([
@@ -31,18 +42,20 @@ export function useDesigns(getCanvasJSONForPage: (pageId: string) => string) {
         setTemplates(t);
       } catch (e) {
         console.error("Failed to load data:", e);
-      } finally {
-        setLoading(false);
+        // The catalogue is optional: keep the editor available and surface
+        // failures only if the requested design itself cannot be loaded.
       }
     })();
   }, []);
 
-  const saveDesign = useCallback(async () => {
+  const saveDesign = useCallback(async (canvasSize?: { width: number; height: number }) => {
     if (!activeIdRef.current) return;
+    if (canvasSize) canvasSizeRef.current = canvasSize;
     setSaving(true);
+    setError("");
     try {
       // Save all pages' canvas JSON
-      const currentPages = pages;
+      const currentPages = pagesRef.current;
       for (const page of currentPages) {
         const json = getCanvasJSONForPage(page.id);
         if (json && json !== "{}") {
@@ -56,17 +69,20 @@ export function useDesigns(getCanvasJSONForPage: (pageId: string) => string) {
       const firstPageJson = currentPages.length > 0 ? getCanvasJSONForPage(currentPages[0].id) : "{}";
       const updated = await api<Design>("PUT", `/api/designs/${activeIdRef.current}`, {
         canvas_json: firstPageJson,
+        ...(canvasSizeRef.current ?? { width: 1080, height: 1080 }),
       });
       setDesigns((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
       setActiveDesign(updated);
     } catch (e) {
       console.error("Failed to save:", e);
+      setError(e instanceof Error ? e.message : "Could not save this design.");
     } finally {
       setSaving(false);
     }
-  }, [getCanvasJSONForPage, pages]);
+  }, [getCanvasJSONForPage]);
 
   const createDesign = useCallback(async (): Promise<string | undefined> => {
+    setError("");
     try {
       const d = await api<Design>("POST", "/api/designs", {
         name: "Untitled Design",
@@ -75,9 +91,13 @@ export function useDesigns(getCanvasJSONForPage: (pageId: string) => string) {
       setDesigns((prev) => [d, ...prev]);
       setActiveDesign(d);
       activeIdRef.current = d.id;
+      canvasSizeRef.current = { width: d.width, height: d.height };
+      setPages(d.pages ?? []);
+      setActivePageId(d.pages?.[0]?.id ?? null);
       return d.id;
     } catch (e) {
       console.error("Failed to create design:", e);
+      setError(e instanceof Error ? e.message : "Could not create a design.");
     }
   }, []);
 
@@ -98,10 +118,12 @@ export function useDesigns(getCanvasJSONForPage: (pageId: string) => string) {
 
   const loadDesign = useCallback(
     async (id: string) => {
+      setError("");
       try {
         const d = await api<DesignWithPages>("GET", `/api/designs/${id}`);
         setActiveDesign(d);
         activeIdRef.current = d.id;
+        canvasSizeRef.current = { width: d.width, height: d.height };
         setPages(d.pages);
         if (d.pages.length > 0) {
           setActivePageId(d.pages[0].id);
@@ -110,6 +132,7 @@ export function useDesigns(getCanvasJSONForPage: (pageId: string) => string) {
         }
       } catch (e) {
         console.error("Failed to load design:", e);
+        setError(e instanceof Error ? e.message : "Could not load this design.");
       }
     },
     []
@@ -217,9 +240,20 @@ export function useDesigns(getCanvasJSONForPage: (pageId: string) => string) {
   const activePage = pages.find((p) => p.id === activePageId) ?? null;
 
   // Auto-save debounced
-  const scheduleSave = useCallback(() => {
+  const scheduleSave = useCallback((canvasSize?: { width: number; height: number }) => {
+    if (canvasSize) canvasSizeRef.current = canvasSize;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => saveDesign(), 2000);
+    saveTimerRef.current = setTimeout(() => {
+      saveTimerRef.current = null;
+      void saveDesign(canvasSizeRef.current ?? undefined);
+    }, 2000);
+  }, [saveDesign]);
+
+  useEffect(() => () => {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      void saveDesign(canvasSizeRef.current ?? undefined);
+    }
   }, [saveDesign]);
 
   return {
@@ -230,6 +264,8 @@ export function useDesigns(getCanvasJSONForPage: (pageId: string) => string) {
     activeIdRef,
     loading,
     saving,
+    error,
+    reportError,
     createDesign,
     createFromTemplate,
     loadDesign,

@@ -1,5 +1,5 @@
 // frontend/components/labs/LinuxLab.jsx
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import axios from "axios";
@@ -72,6 +72,7 @@ export default function LinuxLab({ question, examId: examIdProp, onScoreUpdate, 
   // xterm onData callback registered in useEffect. Reading the ref always
   // gives the current value, no matter when the callback fires.
   const statusRef = useRef("connecting");
+  const onSessionReadyRef = useRef(onSessionReady);
 
   const [status, setStatus] = useState("connecting");
   const [errorMsg, setErrorMsg] = useState("");
@@ -85,7 +86,15 @@ export default function LinuxLab({ question, examId: examIdProp, onScoreUpdate, 
     setStatus(val);
   };
 
-  const validationCommands = question?.validationCommands || [];
+  useEffect(() => {
+    onSessionReadyRef.current = onSessionReady;
+  }, [onSessionReady]);
+
+  const questionId = question?._id;
+  const validationCommands = useMemo(
+    () => question?.validationCommands || [],
+    [question?.validationCommands],
+  );
 
   // ─── Initialize terminal + Docker session ─────────────────────────────────
   useEffect(() => {
@@ -146,7 +155,7 @@ export default function LinuxLab({ question, examId: examIdProp, onScoreUpdate, 
             if (pingRes.data?.data?.output?.includes("__ping_ok__")) {
               // Container still alive — reconnect
               sessionIdRef.current = initialSessionId;
-              onSessionReady?.(initialSessionId);
+              onSessionReadyRef.current?.(initialSessionId);
               term.writeln("\x1b[32m● Reconnected to your existing sandbox.\x1b[0m\r\n");
               updateStatus("ready");
               prompt(term);
@@ -160,12 +169,12 @@ export default function LinuxLab({ question, examId: examIdProp, onScoreUpdate, 
 
         const { data } = await axios.post("/api/labs/terminal/start", {
           examId,
-          questionId: question?._id,
+          questionId,
         });
         if (!mounted) return;
 
         sessionIdRef.current = data.data.sessionId;
-        onSessionReady?.(data.data.sessionId);
+        onSessionReadyRef.current?.(data.data.sessionId);
         term.writeln(data.data.welcome.replace(/\n/g, "\r\n"));
 
         if (question?.setupScript?.trim()) {
@@ -218,12 +227,21 @@ export default function LinuxLab({ question, examId: examIdProp, onScoreUpdate, 
               sessionId: sessionIdRef.current,
               command: cmd,
             });
-            const { output, clear } = data.data;
+            const { output, stdout, stderr, exitCode, cwd, clear } = data.data;
             if (clear) { term.clear(); }
-            else if (output) { term.writeln(output.replace(/\n/g, "\r\n")); }
+            else {
+              if (stdout) term.write(stdout.replace(/\n/g, "\r\n"));
+              if (stderr) term.write(`\x1b[31m${stderr.replace(/\n/g, "\r\n")}\x1b[0m`);
+              if (!stdout && !stderr && output) term.write(output.replace(/\n/g, "\r\n"));
+              if (typeof exitCode === "number" && exitCode !== 0) term.writeln(`\x1b[90m[exit ${exitCode}]\x1b[0m`);
+              prompt(term, cwd);
+              return;
+            }
           } catch (err) {
-            const msg = err.response?.data?.message || "Error";
+            const msg = err.response?.data?.message || err.message || "Terminal command failed.";
+            setErrorMsg(msg);
             term.writeln(`\x1b[31m${msg}\x1b[0m`);
+            if (err.response?.status === 410) updateStatus("error");
           }
           prompt(term);
 
@@ -241,13 +259,18 @@ export default function LinuxLab({ question, examId: examIdProp, onScoreUpdate, 
 
     const onResize = () => fitRef.current?.fit();
     window.addEventListener("resize", onResize);
+    const resizeObserver = typeof ResizeObserver === "undefined"
+      ? null
+      : new ResizeObserver(onResize);
+    if (termRef.current) resizeObserver?.observe(termRef.current);
 
     return () => {
       mounted = false;
       window.removeEventListener("resize", onResize);
+      resizeObserver?.disconnect();
       terminalRef.current?.dispose();
     };
-  }, [examId, question?.setupScript, restartCount]);
+  }, [examId, initialSessionId, questionId, question?.setupScript, readOnly, restartCount]);
 
   // ─── Auto-validate tasks ───────────────────────────────────────────────────
   const runValidation = useCallback(async () => {
@@ -262,7 +285,7 @@ export default function LinuxLab({ question, examId: examIdProp, onScoreUpdate, 
     try {
       const { data } = await axios.post("/api/labs/terminal/validate", {
         sessionId: sessionIdRef.current,
-        questionId: question?._id,
+        questionId,
       });
       const { results, totalEarned, totalPossible } = data.data;
       setTaskResults(results || []);
@@ -285,7 +308,7 @@ export default function LinuxLab({ question, examId: examIdProp, onScoreUpdate, 
     } finally {
       setValidating(false);
     }
-  }, [validationCommands, onScoreUpdate, status, question?._id]);
+  }, [validationCommands, onScoreUpdate, status, questionId]);
 
   // ─── Render ────────────────────────────────────────────────────────────────
   return (
@@ -348,8 +371,9 @@ export default function LinuxLab({ question, examId: examIdProp, onScoreUpdate, 
   );
 }
 
-function prompt(term) {
+function prompt(term, cwd = "/home/student") {
+  const displayedCwd = cwd === "/home/student" ? "~" : cwd.startsWith("/home/student/") ? `~/${cwd.slice(14)}` : cwd;
   term.write(
-    "\x1b[32mstudent\x1b[0m\x1b[37m@\x1b[0m\x1b[34mexam-sandbox\x1b[0m\x1b[37m:~$\x1b[0m "
+    `\x1b[32mstudent\x1b[0m\x1b[37m@\x1b[0m\x1b[34mexam-sandbox\x1b[0m\x1b[37m:${displayedCwd}$\x1b[0m `
   );
 }

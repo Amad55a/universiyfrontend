@@ -18,10 +18,9 @@
 //
 // npm install @monaco-editor/react monaco-editor @xterm/xterm @xterm/addon-fit axios
 
-import { useState, useRef, useCallback, useEffect } from "react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
 import axios from "axios";
 import MonacoCodeEditor from "./monocoEditor";
-import TerminalPanel from "./terminalPanel";
 
 // ─── RESIZABLE BOTTOM PANEL ──────────────────────────────────────────────────
 // Replaces the old fixed height:190 / height:260 panels. Drag the handle 
@@ -167,7 +166,7 @@ window.onerror = function(msg, src, line) {
   el.textContent = '⛔ Error (line ' + line + '): ' + msg;
   document.body.appendChild(el);
 };
-<\/script>`;
+</script>`;
 
     let cleanHtml = html;
     // Replace link stylesheet referencing style.css or ./style.css
@@ -182,7 +181,7 @@ window.onerror = function(msg, src, line) {
     const jsRegex = /<script\s+[^>]*?src=["'](?:\.\/)?main\.js["'][^>]*?(?:\/>|>\s*<\/script>)/gi;
     let jsReplaced = false;
     if (jsRegex.test(cleanHtml)) {
-      cleanHtml = cleanHtml.replace(jsRegex, `<script ${jsScriptType}>${js}\n<\/script>`);
+      cleanHtml = cleanHtml.replace(jsRegex, `<script ${jsScriptType}>${js}\n</script>`);
       jsReplaced = true;
     }
 
@@ -206,8 +205,8 @@ window.onerror = function(msg, src, line) {
       // Inject JS + error handler before </body> if not already replaced
       if (!jsReplaced) {
         doc = /<\/body>/i.test(doc)
-          ? doc.replace(/<\/body>/i, `${errorScript}<script ${jsScriptType}>${js}\n<\/script></body>`)
-          : doc + `${errorScript}<script ${jsScriptType}>${js}\n<\/script>`;
+          ? doc.replace(/<\/body>/i, `${errorScript}<script ${jsScriptType}>${js}\n</script></body>`)
+          : doc + `${errorScript}<script ${jsScriptType}>${js}\n</script>`;
       } else {
         // Even if js was replaced, inject the error script at the end of head or body
         doc = /<\/body>/i.test(doc)
@@ -219,7 +218,7 @@ window.onerror = function(msg, src, line) {
 
     // Default template (no <html> tag)
     const finalCss = cssReplaced ? "" : `<style>${css}</style>`;
-    const finalJs = jsReplaced ? "" : `<script ${jsScriptType}>${js}\n<\/script>`;
+    const finalJs = jsReplaced ? "" : `<script ${jsScriptType}>${js}\n</script>`;
     const cdnScripts = `${tailwindScript}${reactScripts}`;
     return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">${cdnScripts}${finalCss}</head><body>${cleanHtml}${errorScript}${finalJs}</body></html>`;
   }, [codes, allowedLanguages]);
@@ -295,37 +294,70 @@ function HintsPanel({ hints = [], markers = [] }) {
 // ─── ONE-SHOT EXECUTION PANEL (non-interactive Run) ─────────────────────────
 // Accepts an optional `initialResult` to restore the last run when the student
 // navigates back to this question. Stores the result to localStorage.
-function ExecutionPanel({ code, langId, questionId, sqlSchema, questionDraftKey, onResultChange }) {
-  const [result, setResult] = useState(null);
+function loadStoredResult(key) {
+  if (!key || typeof window === "undefined") {
+    return { result: null, storageWarning: "" };
+  }
+  try {
+    const raw = window.localStorage.getItem(key);
+    return { result: raw ? JSON.parse(raw) : null, storageWarning: "" };
+  } catch (error) {
+    return {
+      result: null,
+      storageWarning: `Previous execution output could not be restored: ${error.message}`,
+    };
+  }
+}
+
+function ExecutionPanel({ code, langId, questionId, examId, sqlSchema, questionDraftKey, onResultChange }) {
+  const resultKey = questionDraftKey ? `${questionDraftKey}_lastRun_${langId}` : null;
+  const [outputState, setOutputState] = useState(() => loadStoredResult(resultKey));
+  const { result, storageWarning } = outputState;
+  const setResult = (value) => setOutputState((current) => ({ ...current, result: value }));
+  const setStorageWarning = (value) => setOutputState((current) => ({ ...current, storageWarning: value }));
   const [running, setRunning] = useState(false);
   const [stdin, setStdin]   = useState("");
   const [showStdin, setShowStdin] = useState(false);
 
-  // Restore last run result from localStorage on mount
-  useEffect(() => {
-    if (!questionDraftKey) return;
-    try {
-      const raw = localStorage.getItem(`${questionDraftKey}_lastRun`);
-      if (raw) setResult(JSON.parse(raw));
-    } catch {}
-  }, [questionDraftKey]);
-
   const runCode = async (overrideCode) => {
+    if (running) return;
     setRunning(true);
     try {
-      const payload = { code: typeof overrideCode === 'string' ? overrideCode : code, language: langId };
-      if (langId === "sql") { payload.questionId = questionId; payload.schema = sqlSchema || ""; }
-      else if (stdin.trim()) { payload.stdin = stdin; }
-      const res = await axios.post("/api/labs/code/run", payload);
-      const data = res.data?.data ?? { ok: false, output: "Failed to execute", exitCode: -1, executionTime: 0 };
+      const source = typeof overrideCode === "string" ? overrideCode : code;
+      const payload = { code: source, language: langId };
+      if (examId) {
+        payload.stdin = stdin;
+      } else if (langId === "sql") {
+        payload.questionId = questionId;
+        payload.schema = sqlSchema || "";
+      } else {
+        payload.stdin = stdin;
+      }
+      const endpoint = examId
+        ? `/api/exams/student/${examId}/questions/${questionId}/run`
+        : "/api/labs/code/run";
+      const res = await axios.post(endpoint, payload);
+      const data = res.data?.data;
+      if (!data || typeof data !== "object") {
+        throw new Error("The execution service returned an invalid response.");
+      }
+      if (typeof data.stdout !== "string") data.stdout = data.output ?? "";
+      if (typeof data.stderr !== "string") data.stderr = "";
       setResult(data);
-      // Persist to localStorage so student can restore when returning
-      if (questionDraftKey) {
-        try { localStorage.setItem(`${questionDraftKey}_lastRun`, JSON.stringify(data)); } catch {}
+      if (resultKey) {
+        try {
+          localStorage.setItem(resultKey, JSON.stringify(data));
+          setStorageWarning("");
+        } catch (error) {
+          setStorageWarning(`Execution output could not be saved in this browser: ${error.message}`);
+        }
       }
       onResultChange?.(data);
     } catch (err) {
-      const data = { ok: false, output: err.response?.data?.message || err.message, exitCode: -1, executionTime: 0 };
+      const data = {
+        serviceError: true,
+        message: err.response?.data?.message || err.message || "The execution service is unavailable.",
+      };
       setResult(data);
     } finally {
       setRunning(false);
@@ -334,8 +366,13 @@ function ExecutionPanel({ code, langId, questionId, sqlSchema, questionDraftKey,
 
   const clearResult = () => {
     setResult(null);
-    if (questionDraftKey) {
-      try { localStorage.removeItem(`${questionDraftKey}_lastRun`); } catch {}
+    if (resultKey) {
+      try {
+        localStorage.removeItem(resultKey);
+        setStorageWarning("");
+      } catch (error) {
+        setStorageWarning(`Execution output could not be cleared from this browser: ${error.message}`);
+      }
     }
   };
 
@@ -355,7 +392,7 @@ function ExecutionPanel({ code, langId, questionId, sqlSchema, questionDraftKey,
         </span>
 
         {/* Meta badges (exit code, exec time) */}
-        {result && !isSql && (
+        {result && !isSql && !result.serviceError && (
           <>
             {exitCodeLabel && (
               <span style={{
@@ -450,6 +487,22 @@ function ExecutionPanel({ code, langId, questionId, sqlSchema, questionDraftKey,
 
       {/* Output area */}
       <div style={{ flex: 1, overflow: "auto", padding: "0.5rem", position: "relative" }}>
+        {storageWarning && <p role="status" style={{ color: "#d29922", fontSize: 11 }}>{storageWarning}</p>}
+        {result?.serviceError && (
+          <p role="alert" style={{ color: "#f85149", fontSize: 12, whiteSpace: "pre-wrap" }}>
+            Execution failed: {result.message}
+          </p>
+        )}
+        {result?.timedOut && (
+          <p role="alert" style={{ color: "#d29922", fontSize: 12 }}>
+            Execution timed out. The runner stopped the program.
+          </p>
+        )}
+        {result && !result.serviceError && !isSql && (
+          <div style={{ color: "#8b949e", fontSize: 10, margin: "0.25rem 0.5rem" }}>
+            Program stdout (last run)
+          </div>
+        )}
         {/* Empty state */}
         {!result && (
           <div style={{ color: "#484f58", fontSize: 12, padding: "0.5rem", fontFamily: "monospace" }}>
@@ -458,22 +511,25 @@ function ExecutionPanel({ code, langId, questionId, sqlSchema, questionDraftKey,
         )}
 
         {/* Error / non-ok output */}
-        {result && !result.ok && !isSql && (
-          <pre style={{ color: "#f85149", fontSize: 12, padding: "0.5rem", whiteSpace: "pre-wrap", fontFamily: "monospace", margin: 0 }}>
-            {result.output || ""}
+        {result && !result.serviceError && !result.ok && !isSql && (
+          <pre aria-label="Standard output" style={{ color: "#f85149", fontSize: 12, padding: "0.5rem", whiteSpace: "pre-wrap", fontFamily: "monospace", margin: 0 }}>
+            {result.stdout || "(No stdout output)"}
           </pre>
         )}
 
         {/* Success output (may be empty string — intentional) */}
-        {result && result.ok && !isSql && (
-          <pre style={{ color: "#e6edf3", fontSize: 12, padding: "0.5rem", whiteSpace: "pre-wrap", fontFamily: "monospace", margin: 0 }}>
-            {result.output}
-            {result.output === "" && (
-              <span style={{ color: "#484f58", fontStyle: "italic" }}>{/* Program produced no output */}</span>
-            )}
+        {result && !result.serviceError && result.ok && !isSql && (
+          <pre aria-label="Standard output" style={{ color: "#e6edf3", fontSize: 12, padding: "0.5rem", whiteSpace: "pre-wrap", fontFamily: "monospace", margin: 0 }}>
+            {result.stdout || "(No stdout output)"}
           </pre>
         )}
 
+        {result?.stderr && !result.serviceError && !isSql && (
+          <section aria-label="Standard error" style={{ borderTop: "1px solid #30363d", padding: "0.5rem" }}>
+            <div style={{ color: "#f85149", fontSize: 10, marginBottom: 4 }}>STDERR</div>
+            <pre style={{ color: "#ff7b72", fontSize: 12, whiteSpace: "pre-wrap", fontFamily: "monospace", margin: 0 }}>{result.stderr}</pre>
+          </section>
+        )}
         {/* SQL table result */}
         {result && result.ok && isSql && result.type === "table" && (
           <>
@@ -503,14 +559,13 @@ function ExecutionPanel({ code, langId, questionId, sqlSchema, questionDraftKey,
 }
 
 // ─── STUDENT: CODING LAB (main component) ────────────────────────────────────
-export function StudentCodingLab({ question, value, onSave }) {
+export function StudentCodingLab({ question, value, onSave, examId }) {
   const allowedLangs = (question.allowedLanguages || []).filter(id => !["tailwind", "react"].includes(id));
   const initialLang = value?.langId || allowedLangs[0] || "python";
   const [selectedLangId, setSelectedLangId] = useState(initialLang);
   const [codes, setCodes] = useState(value?.codes || (value?.code ? { [initialLang]: value.code } : {}));
   const [showPreview, setShowPreview] = useState(true);
   const [markers, setMarkers] = useState([]);
-  const [useTerminal, setUseTerminal] = useState(false);
 
   // Key used for localStorage — scoped to question so different questions don't collide
   const draftKey = question._id ? `coding_draft_${question._id}` : null;
@@ -549,7 +604,6 @@ export function StudentCodingLab({ question, value, onSave }) {
 
   const isWebProject = allowedLangs.some(id => ["html", "css"].includes(id));
   const showEditorTabIsWeb = isWebProject && WEB_PROJECT_LANGS.includes(selectedLangId);
-  const supportsTerminal = ["python", "c", "cpp", "csharp", "javascript"].includes(selectedLangId);
 
   const [previewCodes, setPreviewCodes] = useState(() => {
     if (!isWebProject) return {};
@@ -618,20 +672,6 @@ export function StudentCodingLab({ question, value, onSave }) {
               {showPreview ? "👁 Hide Preview" : "👁 Show Preview"}
             </button>
           )}
-          {supportsTerminal && (
-            <button className="bg-[#2C2DE0] text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150 group"
-              onClick={() => setUseTerminal(t => !t)}
-              title="Interactive terminal — needed if your program reads input()/scanf/Console.ReadLine"
-              style={{
-                background: useTerminal ? "#1a3652" : "#21262d",
-                border: `1px solid ${useTerminal ? "#388bfd" : "#30363d"}`,
-                color: useTerminal ? "#79c0ff" : "#8b949e",
-                padding: "0.25rem 0.65rem", borderRadius: 5, cursor: "pointer", fontSize: 11,
-              }}
-            >
-              {useTerminal ? "▶ Quick Run" : "🖥 Open Terminal"}
-            </button>
-          )}
         </div>
       </div>
 
@@ -648,34 +688,29 @@ export function StudentCodingLab({ question, value, onSave }) {
 
           {!showEditorTabIsWeb && (
             <ResizablePanel
-              defaultHeight={supportsTerminal && useTerminal
-                ? Math.round(Math.min(window.innerHeight * 0.45, 420))
-                : Math.round(Math.min(window.innerHeight * 0.3, 260))}
-              minHeight={supportsTerminal && useTerminal ? 220 : 140}
+              defaultHeight={Math.round(Math.min(window.innerHeight * 0.3, 260))}
+              minHeight={140}
               maxHeight={Math.round(window.innerHeight * 0.7)}
             >
-              {supportsTerminal && useTerminal ? (
-                <TerminalPanel examId={question._id} questionDraftKey={draftKey} />
-              ) : (
-                <ExecutionPanel
-                  code={code}
-                  langId={selectedLangId}
-                  questionId={question._id}
-                  sqlSchema={question.sqlSchema}
-                  questionDraftKey={draftKey}
-                  onResultChange={(res) => {
-                    // Persist execution result in parent answer store so teacher can see it
-                    onSave?.({
-                      langId: selectedLangId,
-                      code,
-                      codes,
-                      codeOutput: res?.output || "",
-                      exitCode: res?.exitCode,
-                      executionTime: res?.executionTime,
-                    });
-                  }}
-                />
-              )}
+              <ExecutionPanel
+                key={`${draftKey || question._id}_${selectedLangId}`}
+                code={code}
+                langId={selectedLangId}
+                questionId={question._id}
+                examId={examId}
+                sqlSchema={question.sqlSchema}
+                questionDraftKey={draftKey}
+                onResultChange={(res) => {
+                  onSave?.({
+                    langId: selectedLangId,
+                    code,
+                    codes,
+                    codeOutput: res?.stdout ?? res?.output ?? "",
+                    exitCode: res?.exitCode,
+                    executionTime: res?.executionTime,
+                  });
+                }}
+              />
             </ResizablePanel>
           )}
         </div>

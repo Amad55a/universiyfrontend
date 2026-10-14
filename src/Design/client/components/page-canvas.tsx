@@ -12,7 +12,7 @@ interface PageCanvasProps {
 }
 
 export function PageCanvas({ page, isActive, width, height, onActivate }: PageCanvasProps) {
-  const { registerCanvas, unregisterCanvas } = useEditor();
+  const { registerCanvas, unregisterCanvas, reportError } = useEditor();
   const canvasElRef = useRef<HTMLCanvasElement>(null);
   const fabricRef = useRef<fabric.Canvas | null>(null);
   const onActivateRef = useRef(onActivate);
@@ -29,6 +29,7 @@ export function PageCanvas({ page, isActive, width, height, onActivate }: PageCa
       selection: true,
       controlsAboveOverlay: true,
     });
+    let disposed = false;
 
     // Retina rendering
     const dpr = window.devicePixelRatio || 1;
@@ -126,38 +127,59 @@ export function PageCanvas({ page, isActive, width, height, onActivate }: PageCa
     c.getObjects().forEach(applyCustomControls);
 
     // Apply to any newly added objects
-    c.on("object:added", (e) => {
+    const onObjectAdded = (e: { target?: fabric.FabricObject }) => {
       if (e.target) applyCustomControls(e.target);
-    });
+    };
+    c.on("object:added", onObjectAdded);
 
-    // Load page content
     if (page.canvas_json && page.canvas_json !== "{}") {
       try {
-        c.loadFromJSON(JSON.parse(page.canvas_json)).then(() => c.requestRenderAll());
-      } catch {
-        // ignore parse errors
+        void c.loadFromJSON(JSON.parse(page.canvas_json)).then(() => {
+          if (!disposed) c.requestRenderAll();
+        }).catch((error: unknown) => {
+          if (disposed) return;
+          console.error("Failed to restore saved canvas:", error);
+          reportError("Some saved canvas content could not be restored. The editor remains available; check image links and retry.");
+        });
+      } catch (error) {
+        console.error("Saved canvas data is invalid:", error);
+        reportError("Saved canvas data is invalid. The editor remains available with a blank canvas.");
       }
     }
 
-    // On mouse down, activate this canvas (use ref to avoid stale closure)
-    c.on("mouse:down", () => onActivateRef.current());
+    const onMouseDown = () => onActivateRef.current();
+    c.on("mouse:down", onMouseDown);
 
     fabricRef.current = c;
     registerCanvas(page.id, c);
 
     return () => {
+      disposed = true;
+      c.off("object:added", onObjectAdded);
+      c.off("mouse:down", onMouseDown);
       unregisterCanvas(page.id);
       c.dispose();
       fabricRef.current = null;
     };
   }, []);
 
+  useEffect(() => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    canvas.setDimensions({ width: width * dpr, height: height * dpr });
+    canvas.setDimensions({ width, height }, { cssOnly: true });
+    canvas.setViewportTransform([dpr, 0, 0, dpr, 0, 0]);
+    canvas.requestRenderAll();
+  }, [width, height]);
+
   return (
     <div
       className={`shadow-lg rounded-lg overflow-hidden ${isActive ? "ring-2 ring-[#6366f1]" : ""}`}
       style={{ width, height }}
     >
-      <canvas ref={canvasElRef} />
+      <canvas ref={canvasElRef} aria-label={`Design canvas page ${page.id}`} />
     </div>
   );
 }
