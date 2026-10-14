@@ -722,6 +722,8 @@ export default function StudentExamSession() {
                   <DesignLab
                     key={activeQuestion._id}
                     question={activeQuestion}
+                    examId={examId}
+                    questionId={activeQuestion._id}
                     initialDesignId={
                       answers[activeQuestion._id]?.answer?.designId ||
                       (typeof answers[activeQuestion._id]?.answer === "string"

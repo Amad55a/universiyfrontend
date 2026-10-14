@@ -25,9 +25,18 @@ describe("useDesigns", () => {
   });
 
   it("creates the first page immediately so the editor can mount a canvas", async () => {
-    const { result } = renderHook(() => useDesigns(() => "{}"));
+    const { result } = renderHook(() => useDesigns(() => "{}", {
+      examId: "exam-1",
+      questionId: "question-1",
+    }));
     await waitFor(() => expect(result.current.loading).toBe(false));
     await act(async () => { await result.current.createDesign(); });
+    expect(apiMock).toHaveBeenCalledWith("POST", "/api/designs", {
+      name: "Untitled Design",
+      canvas_json: "{}",
+      examId: "exam-1",
+      questionId: "question-1",
+    });
     expect(result.current.activeDesign?.id).toBe("design-1");
     expect(result.current.pages[0]?.id).toBe("page-1");
     expect(result.current.activePageId).toBe("page-1");

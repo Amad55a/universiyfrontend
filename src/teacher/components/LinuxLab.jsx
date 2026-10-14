@@ -186,6 +186,9 @@ export default function LinuxLab({ question, examId: examIdProp, onScoreUpdate, 
           if (setupRes.data.data.output) {
             term.writeln(setupRes.data.data.output.replace(/\n/g, "\r\n"));
           }
+          if (setupRes.data.data.timedOut) {
+            term.writeln("\x1b[33m[Setup command timed out after 10 seconds]\x1b[0m");
+          }
           term.writeln("\x1b[32m[Setup] Done.\x1b[0m\r\n");
         }
 
@@ -227,12 +230,13 @@ export default function LinuxLab({ question, examId: examIdProp, onScoreUpdate, 
               sessionId: sessionIdRef.current,
               command: cmd,
             });
-            const { output, stdout, stderr, exitCode, cwd, clear } = data.data;
+            const { output, stdout, stderr, exitCode, cwd, clear, timedOut } = data.data;
             if (clear) { term.clear(); }
             else {
               if (stdout) term.write(stdout.replace(/\n/g, "\r\n"));
               if (stderr) term.write(`\x1b[31m${stderr.replace(/\n/g, "\r\n")}\x1b[0m`);
               if (!stdout && !stderr && output) term.write(output.replace(/\n/g, "\r\n"));
+              if (timedOut) term.writeln("\x1b[33m[Command timed out after 10 seconds]\x1b[0m");
               if (typeof exitCode === "number" && exitCode !== 0) term.writeln(`\x1b[90m[exit ${exitCode}]\x1b[0m`);
               prompt(term, cwd);
               return;

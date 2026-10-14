@@ -18,6 +18,8 @@ export default function DesignLab({
   question,
   value,
   onChange,
+  examId,
+  questionId,
   initialDesignId,
   onDesignCreated,
 }) {
@@ -25,6 +27,8 @@ export default function DesignLab({
     <div className="w-full h-[750px] min-h-[600px] border border-neutral-300 dark:border-neutral-700 rounded-lg overflow-hidden bg-[#F3F4F7]">
       <DesignApp
         question={question}
+        examId={examId}
+        questionId={questionId}
         embedded
         initialDesignId={initialDesignId || value?.designId}
         onDesignCreated={onDesignCreated}
