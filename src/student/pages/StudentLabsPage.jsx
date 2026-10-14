@@ -7,6 +7,7 @@ import DesignLab from "@/teacher/components/DesignLab";
 import LinuxLab from "@/teacher/components/LinuxLab";
 import NetworkingLab from "@/teacher/components/NetworkingLab";
 import WindowsLab from "@/teacher/components/WindowsLab";
+import { LINUX_TERMINAL_ENABLED } from "@/config/features";
 
 const PRIMARY_BTN =
   "bg-[#2C2DE0] text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] " +
@@ -63,7 +64,8 @@ const LABS = [
 export default function StudentLabsPage() {
   const { t } = useLanguage();
   const [active, setActive] = React.useState("coding");
-  const lab = LABS.find(l => l.id === active);
+  const availableLabs = LABS.filter(lab => lab.id !== "linux" || LINUX_TERMINAL_ENABLED);
+  const lab = availableLabs.find(l => l.id === active);
   const ActiveComponent = lab?.component;
 
   const translatedLabels = {
@@ -107,19 +109,19 @@ export default function StudentLabsPage() {
 
       <div className="max-w-7xl mx-auto p-6 flex gap-6">
         <aside className="w-56 shrink-0 space-y-1">
-          {LABS.map(({ id, icon: Icon }) => (
-            <button className="bg-[#2C2DE0] text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150 group"
-              key={id}
+          {availableLabs.map((item) => (
+            <button
+              key={item.id}
               type="button"
-              onClick={() => setActive(id)}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm ${
-                active === id
+              onClick={() => setActive(item.id)}
+              className={`group w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm ${
+                active === item.id
                   ? `${PRIMARY_BTN} justify-start`
                   : "text-neutral-400 font-medium hover:bg-neutral-800 hover:text-neutral-200 transition-colors"
               }`}
             >
-              <Icon className="w-4 h-4" />
-              {translatedLabels[id]}
+              {React.createElement(item.icon, { className: "w-4 h-4" })}
+              {translatedLabels[item.id]}
             </button>
           ))}
         </aside>
