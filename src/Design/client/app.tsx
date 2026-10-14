@@ -7,12 +7,13 @@ import { Home } from "./components/home";
 import WebFont from "webfontloader";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-export function App({ question, examId, questionId, initialDesignId, onDesignCreated, embedded = false }: {
+export function App({ question, examId, questionId, initialDesignId, onDesignCreated, onSubmissionPreparation, embedded = false }: {
   question?: any;
   examId?: string;
   questionId?: string;
   initialDesignId?: string;
   onDesignCreated?: (id: string) => void;
+  onSubmissionPreparation?: (prepare: (() => Promise<void>) | null) => void;
   embedded?: boolean;
 } = {}) {
   const { path, navigate, designId } = useRouter();
@@ -28,6 +29,15 @@ export function App({ question, examId, questionId, initialDesignId, onDesignCre
   useEffect(() => {
     onDesignCreatedRef.current = onDesignCreated;
   }, [onDesignCreated]);
+
+  useEffect(() => {
+    const prepareSubmission = async () => {
+      await canvasState.flushPendingAssets();
+      await designState.flushSave();
+    };
+    onSubmissionPreparation?.(prepareSubmission);
+    return () => onSubmissionPreparation?.(null);
+  }, [canvasState.flushPendingAssets, designState.flushSave, onSubmissionPreparation]);
 
   const createEmbeddedDesign = useCallback(async () => {
     if (designCreationStartedRef.current) return;

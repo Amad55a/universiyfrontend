@@ -15,12 +15,15 @@ export function useDesigns(
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const errorRef = useRef(error);
+  errorRef.current = error;
   const pagesRef = useRef(pages);
   pagesRef.current = pages;
   const activeIdRef = useRef<string | null>(null);
   const activePageIdRef = useRef<string | null>(null);
   const canvasSizeRef = useRef<{ width: number; height: number } | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveInFlightRef = useRef<Promise<boolean> | null>(null);
 
   const reportError = useCallback((message: string) => {
     setError(message);
@@ -52,38 +55,59 @@ export function useDesigns(
     })();
   }, []);
 
-  const saveDesign = useCallback(async (canvasSize?: { width: number; height: number }) => {
-    if (!activeIdRef.current) return;
+  const saveDesign = useCallback(async (canvasSize?: { width: number; height: number }): Promise<boolean> => {
+    if (saveInFlightRef.current) await saveInFlightRef.current;
+    if (!activeIdRef.current) return false;
     if (canvasSize) canvasSizeRef.current = canvasSize;
     setSaving(true);
+    errorRef.current = "";
     setError("");
-    try {
-      // Save all pages' canvas JSON
-      const currentPages = pagesRef.current;
-      for (const page of currentPages) {
-        const json = getCanvasJSONForPage(page.id);
-        if (json && json !== "{}") {
+    const operation = (async () => {
+      try {
+        // Save all pages' canvas JSON
+        const currentPages = pagesRef.current;
+        for (const page of currentPages) {
+          const json = getCanvasJSONForPage(page.id);
           const updatedPage = await api<Page>("PUT", `/api/pages/${page.id}`, {
-            canvas_json: json,
+            canvas_json: json || "{}",
           });
           setPages((prev) => prev.map((p) => (p.id === updatedPage.id ? updatedPage : p)));
         }
+        // Also update design's canvas_json with first page for backwards compat
+        const firstPageJson = currentPages.length > 0 ? getCanvasJSONForPage(currentPages[0].id) : "{}";
+        const updated = await api<Design>("PUT", `/api/designs/${activeIdRef.current}`, {
+          canvas_json: firstPageJson,
+          ...(canvasSizeRef.current ?? { width: 1080, height: 1080 }),
+        });
+        setDesigns((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
+        setActiveDesign(updated);
+        return true;
+      } catch (e) {
+        console.error("Failed to save:", e);
+        const message = e instanceof Error ? e.message : "Could not save this design.";
+        errorRef.current = message;
+        setError(message);
+        return false;
+      } finally {
+        setSaving(false);
       }
-      // Also update design's canvas_json with first page for backwards compat
-      const firstPageJson = currentPages.length > 0 ? getCanvasJSONForPage(currentPages[0].id) : "{}";
-      const updated = await api<Design>("PUT", `/api/designs/${activeIdRef.current}`, {
-        canvas_json: firstPageJson,
-        ...(canvasSizeRef.current ?? { width: 1080, height: 1080 }),
-      });
-      setDesigns((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
-      setActiveDesign(updated);
-    } catch (e) {
-      console.error("Failed to save:", e);
-      setError(e instanceof Error ? e.message : "Could not save this design.");
+    })();
+    saveInFlightRef.current = operation;
+    try {
+      return await operation;
     } finally {
-      setSaving(false);
+      if (saveInFlightRef.current === operation) saveInFlightRef.current = null;
     }
   }, [getCanvasJSONForPage]);
+
+  const flushSave = useCallback(async () => {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    const saved = await saveDesign(canvasSizeRef.current ?? undefined);
+    if (!saved) throw new Error(errorRef.current || "Could not save the submitted design.");
+  }, [saveDesign]);
 
   const createDesign = useCallback(async (): Promise<string | undefined> => {
     setError("");
@@ -276,6 +300,7 @@ export function useDesigns(
     createFromTemplate,
     loadDesign,
     saveDesign,
+    flushSave,
     deleteDesign,
     renameDesign,
     scheduleSave,

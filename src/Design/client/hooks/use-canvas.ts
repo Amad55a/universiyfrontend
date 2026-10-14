@@ -24,6 +24,7 @@ interface CanvasHistory {
 
 export function useCanvasState() {
   const canvasMapRef = useRef<Map<string, fabric.Canvas>>(new Map());
+  const canvasJsonCacheRef = useRef<Map<string, string>>(new Map());
   const historyMapRef = useRef<Map<string, CanvasHistory>>(new Map());
   const [activeCanvasId, setActiveCanvasId] = useState<string | null>(null);
   const activeCanvasIdRef = useRef<string | null>(null);
@@ -38,6 +39,41 @@ export function useCanvasState() {
   const [lastModified, setLastModified] = useState(0);
   const [assetError, setAssetError] = useState("");
   const isRestoringRef = useRef<Set<string>>(new Set());
+  const pendingAssetOperationsRef = useRef<Set<Promise<void>>>(new Set());
+  const assetFailuresRef = useRef<Map<string, string>>(new Map());
+
+  const trackAssetOperation = useCallback((key: string, task: () => Promise<void>) => {
+    let operation: Promise<void>;
+    operation = Promise.resolve()
+      .then(task)
+      .then(() => {
+        assetFailuresRef.current.delete(key);
+        setAssetError("");
+      })
+      .catch((error: unknown) => {
+        const message = error instanceof Error
+          ? error.message
+          : "A Design Lab image could not be loaded.";
+        console.error("Failed to load Design Lab asset:", error);
+        assetFailuresRef.current.set(key, message);
+        setAssetError(message);
+      })
+      .finally(() => {
+        pendingAssetOperationsRef.current.delete(operation);
+      });
+    pendingAssetOperationsRef.current.add(operation);
+    return operation;
+  }, []);
+
+  const flushPendingAssets = useCallback(async () => {
+    while (pendingAssetOperationsRef.current.size > 0) {
+      await Promise.all([...pendingAssetOperationsRef.current]);
+    }
+    const failure = assetFailuresRef.current.values().next().value;
+    if (failure) {
+      throw new Error(`A Design Lab image is not saved: ${failure} Retry loading the image before submitting.`);
+    }
+  }, []);
 
   // Helper to get the active canvas
   const getActiveCanvas = useCallback((): fabric.Canvas | null => {
@@ -108,6 +144,7 @@ export function useCanvasState() {
     canvas.on("object:added", () => saveHistory(pageId));
     canvas.on("object:modified", () => saveHistory(pageId));
     canvas.on("object:removed", () => saveHistory(pageId));
+    canvas.on("text:changed", () => saveHistory(pageId));
 
     // Initial history snapshot
     setTimeout(() => {
@@ -118,6 +155,8 @@ export function useCanvasState() {
   }, [saveHistory, updateUndoRedoState]);
 
   const unregisterCanvas = useCallback((pageId: string) => {
+    const canvas = canvasMapRef.current.get(pageId);
+    if (canvas) canvasJsonCacheRef.current.set(pageId, JSON.stringify(canvas.toJSON()));
     canvasMapRef.current.delete(pageId);
     historyMapRef.current.delete(pageId);
   }, []);
@@ -155,12 +194,15 @@ export function useCanvasState() {
         fontSize: cfg.fontSize,
         fontWeight: cfg.fontWeight,
         fontFamily: cfg.fontFamily,
-        fill: "#ffffff",
+        fill: "#1f2937",
         textAlign: "center",
         editable: true,
       });
+      text.hiddenTextareaContainer = canvas.wrapperEl;
       canvas.add(text);
       canvas.setActiveObject(text);
+      text.enterEditing();
+      text.selectAll();
       canvas.requestRenderAll();
     },
     [getActiveCanvas, canvasWidth, canvasHeight]
@@ -226,11 +268,12 @@ export function useCanvasState() {
 
   const addImage = useCallback(
     async (url: string) => {
-      const canvas = getActiveCanvas();
-      if (!canvas) return;
-      try {
-        setAssetError("");
+      const pageId = activeCanvasIdRef.current;
+      if (!pageId || !canvasMapRef.current.has(pageId)) return;
+      await trackAssetOperation(`image:${pageId}:${url}`, async () => {
         const img = await fabric.FabricImage.fromURL(url, { crossOrigin: "anonymous" });
+        const canvas = canvasMapRef.current.get(pageId);
+        if (!canvas) throw new Error("The active design page closed before its image loaded.");
         const scale = Math.min(
           (canvasWidth * 0.6) / (img.width || 1),
           (canvasHeight * 0.6) / (img.height || 1),
@@ -245,12 +288,9 @@ export function useCanvasState() {
         canvas.add(img);
         canvas.setActiveObject(img);
         canvas.requestRenderAll();
-      } catch (e) {
-        console.error("Failed to load image:", e);
-        setAssetError("The selected image could not be loaded. Check that it is available and try again.");
-      }
+      });
     },
-    [getActiveCanvas, canvasWidth, canvasHeight]
+    [canvasWidth, canvasHeight, trackAssetOperation]
   );
 
   // ── Background ──────────────────────────────────────────────────────
@@ -261,31 +301,31 @@ export function useCanvasState() {
       const pageId = activeCanvasIdRef.current;
       if (!canvas || !pageId) return;
       if (type === "color" || type === "gradient") {
+        assetFailuresRef.current.delete(`background:${pageId}`);
         setAssetError("");
         canvas.backgroundColor = value;
         canvas.requestRenderAll();
         saveHistory(pageId);
       } else if (type === "image") {
-        setAssetError("");
-        fabric.FabricImage.fromURL(value, { crossOrigin: "anonymous" }).then((img) => {
+        void trackAssetOperation(`background:${pageId}`, async () => {
+          const img = await fabric.FabricImage.fromURL(value, { crossOrigin: "anonymous" });
+          const currentCanvas = canvasMapRef.current.get(pageId);
+          if (!currentCanvas) throw new Error("The active design page closed before its background loaded.");
           const scaleX = canvasWidth / (img.width || 1);
           const scaleY = canvasHeight / (img.height || 1);
           img.set({ left: 0, top: 0, scaleX, scaleY, selectable: false, evented: false });
-          const objects = canvas.getObjects();
+          const objects = currentCanvas.getObjects();
           const bgObj = objects.find((o) => (o as any)._isBgImage);
-          if (bgObj) canvas.remove(bgObj);
+          if (bgObj) currentCanvas.remove(bgObj);
           (img as any)._isBgImage = true;
-          canvas.add(img);
-          canvas.sendObjectToBack(img);
-          canvas.requestRenderAll();
+          currentCanvas.add(img);
+          currentCanvas.sendObjectToBack(img);
+          currentCanvas.requestRenderAll();
           saveHistory(pageId);
-        }).catch((error) => {
-          console.error("Failed to load background image:", error);
-          setAssetError("The background image could not be loaded. Check that it is available and try again.");
         });
       }
     },
-    [getActiveCanvas, canvasWidth, canvasHeight, saveHistory]
+    [getActiveCanvas, canvasWidth, canvasHeight, saveHistory, trackAssetOperation]
   );
 
   // ── Object manipulation ─────────────────────────────────────────────
@@ -421,7 +461,7 @@ export function useCanvasState() {
 
   const getCanvasJSONForPage = useCallback((pageId: string) => {
     const canvas = canvasMapRef.current.get(pageId);
-    if (!canvas) return "{}";
+    if (!canvas) return canvasJsonCacheRef.current.get(pageId) ?? "{}";
     return JSON.stringify(canvas.toJSON());
   }, []);
 
@@ -524,5 +564,6 @@ export function useCanvasState() {
     loadTemplate,
     lastModified,
     assetError,
+    flushPendingAssets,
   };
 }

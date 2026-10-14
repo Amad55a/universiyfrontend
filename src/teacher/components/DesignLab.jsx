@@ -22,6 +22,7 @@ export default function DesignLab({
   questionId,
   initialDesignId,
   onDesignCreated,
+  onSubmissionPreparation,
 }) {
   return (
     <div className="w-full h-[750px] min-h-[600px] border border-neutral-300 dark:border-neutral-700 rounded-lg overflow-hidden bg-[#F3F4F7]">
@@ -32,6 +33,7 @@ export default function DesignLab({
         embedded
         initialDesignId={initialDesignId || value?.designId}
         onDesignCreated={onDesignCreated}
+        onSubmissionPreparation={onSubmissionPreparation}
         onChange={onChange}
       />
     </div>

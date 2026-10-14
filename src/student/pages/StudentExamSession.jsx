@@ -28,6 +28,7 @@ import axios from "axios";
 import { toast } from "sonner";
 import { Link, useNavigate, useLocation, useParams } from "react-router-dom";
 import { useLanguage } from "../../hooks/useLanguage";
+import ExamSubmitConfirmation from "../components/ExamSubmitConfirmation";
 import {
   Clock,
   CheckCircle,
@@ -142,6 +143,13 @@ export default function StudentExamSession() {
   const serverClockOffsetRef = useRef(0);
   const submitInFlightRef = useRef(false);
   const [fullscreenError, setFullscreenError] = useState("");
+  const [showSubmitConfirmation, setShowSubmitConfirmation] = useState(false);
+  const designSubmissionPrepareRef = useRef(new Map());
+  const disarmSecurityRef = useRef(() => {});
+
+  const registerDesignSubmissionPreparation = useCallback((questionId, prepare) => {
+    if (prepare) designSubmissionPrepareRef.current.set(questionId, prepare);
+  }, []);
 
   const exam = examSession?.exam;
   const questions = exam?.questions || [];
@@ -230,18 +238,17 @@ export default function StudentExamSession() {
 
   // ─── Submit exam ─────────────────────────────────────────────────────────────
   const handleSubmit = useCallback(
-    async (isAuto = false) => {
+    async (isAuto = false, confirmed = false) => {
       if (submitInFlightRef.current) return;
-      if (!isAuto) {
-        const ok = window.confirm(
-          t("exam.confirmSubmit") ||
-          "Are you sure you want to submit? You cannot change answers after submitting."
-        );
-        if (!ok) return;
+      if (!isAuto && !confirmed) {
+        setShowSubmitConfirmation(true);
+        return;
       }
+      setShowSubmitConfirmation(false);
       submitInFlightRef.current = true;
       setIsSubmitting(true);
       try {
+        await Promise.all([...designSubmissionPrepareRef.current.values()].map((prepare) => prepare()));
         const finalAnswers = Object.values(answers);
 
         const clientRevision = Math.max(
@@ -253,6 +260,7 @@ export default function StudentExamSession() {
           answers: finalAnswers,
           clientRevision,
         });
+        disarmSecurityRef.current();
         // Clear draft on successful submit
         localStorage.removeItem(draftKey(examId));
         if (document.fullscreenElement) document.exitFullscreen().catch(() => { });
@@ -272,7 +280,7 @@ export default function StudentExamSession() {
   );
 
   // ─── Security hook ───────────────────────────────────────────────────────────
-  const { violations, isFullscreen, violationCount, sessionId } =
+  const { violations, isFullscreen, violationCount, sessionId, disarm } =
     useExamSecurity({
       enabled: !!exam,
       rules: {
@@ -312,6 +320,7 @@ export default function StudentExamSession() {
         }
       },
     });
+  disarmSecurityRef.current = disarm;
 
   // ─── Countdown timer ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -747,6 +756,9 @@ export default function StudentExamSession() {
                         designId,
                       })
                     }
+                    onSubmissionPreparation={(prepare) =>
+                      registerDesignSubmissionPreparation(activeQuestion._id, prepare)
+                    }
                     value={answers[activeQuestion._id]?.answer}
                     onChange={(val) =>
                       handleAnswerChange(activeQuestion._id, val)
@@ -776,6 +788,13 @@ export default function StudentExamSession() {
                   />
                 )}
               </div>
+              {showSubmitConfirmation && (
+                <ExamSubmitConfirmation
+                  isSubmitting={isSubmitting}
+                  onCancel={() => setShowSubmitConfirmation(false)}
+                  onConfirm={() => handleSubmit(false, true)}
+                />
+              )}
             </div>
           </div>
 

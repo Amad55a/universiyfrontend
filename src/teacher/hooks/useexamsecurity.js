@@ -32,13 +32,22 @@ export default function useExamSecurity({
   const [violations, setViolations] = useState([]);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const lockedRef = useRef(false);
+  const armedRef = useRef(Boolean(enabled));
   const wasFullscreenRef = useRef(false);
   // Stable session identifier for watermark — generated once per hook mount
   const sessionId = useMemo(() => Math.random().toString(36).slice(2, 8).toUpperCase(), []);
 
+  const disarm = useCallback(() => {
+    armedRef.current = false;
+  }, []);
+
+  useEffect(() => {
+    armedRef.current = Boolean(enabled);
+  }, [enabled]);
+
   const report = useCallback(
     (type, detail) => {
-      if (lockedRef.current || rules.recordViolations === false) return;
+      if (!armedRef.current || lockedRef.current || rules.recordViolations === false) return;
       const entry = { type, detail, timestamp: Date.now() };
       setViolations(prev => {
         const next = [...prev, entry];
@@ -204,6 +213,7 @@ export default function useExamSecurity({
   useEffect(() => {
     if (!enabled) return;
     const onBeforeUnload = e => {
+      if (!armedRef.current) return;
       e.preventDefault();
       e.returnValue = "";
     };
@@ -211,5 +221,5 @@ export default function useExamSecurity({
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, [enabled]);
 
-  return { violations, isFullscreen, violationCount: violations.length, sessionId };
+  return { violations, isFullscreen, violationCount: violations.length, sessionId, disarm };
 }

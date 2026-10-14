@@ -1,102 +1,11 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
-import * as fabric from "fabric";
 import { toast } from "sonner";
+import DesignSnapshotPreview from "../../components/DesignSnapshotPreview";
 import {
   Award, AlertCircle, FileText, CheckCircle2, ChevronRight, ArrowLeft,
   MessageSquare, Send, Sparkles, Loader2, Calendar, Shield, Play
 } from "lucide-react";
-
-function StudentDesignPreview({ designId, imageUrl }) {
-  const [previewUrl, setPreviewUrl] = useState(imageUrl || null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    if (imageUrl) {
-      setPreviewUrl(imageUrl);
-      setError("");
-      setLoading(false);
-      return;
-    }
-
-    if (!designId) {
-      setPreviewUrl(null);
-      setError("No design ID available for preview.");
-      return;
-    }
-
-    let cancelled = false;
-    const loadPreview = async () => {
-      setLoading(true);
-      setPreviewUrl(null);
-      setError("");
-      try {
-        const { data } = await axios.get(`/api/designs/${designId}`);
-        const page = data.pages?.[0];
-        const width = Number(data.width) || 1080;
-        const height = Number(data.height) || 1080;
-
-        if (!page?.canvas_json || page.canvas_json === "{}") {
-          throw new Error("No canvas data");
-        }
-
-        const canvas = document.createElement("canvas");
-        const sc = new fabric.StaticCanvas(canvas, { width, height });
-        const parsed = JSON.parse(page.canvas_json);
-        sc.loadFromJSON(parsed, () => {
-          if (cancelled) {
-            sc.dispose();
-            return;
-          }
-          sc.renderAll();
-          const multiplier = Math.min(320 / width, 320 / height, 1);
-          setPreviewUrl(sc.toDataURL({ format: "png", multiplier }));
-          sc.dispose();
-        });
-      } catch (err) {
-        if (!cancelled) {
-          setError("Unable to render the submitted design preview.");
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    };
-
-    loadPreview();
-    return () => {
-      cancelled = true;
-    };
-  }, [designId, imageUrl]);
-
-  if (loading) {
-    return (
-      <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-gray-50 dark:bg-zinc-900 p-4 text-sm text-gray-500 dark:text-gray-400">
-        Loading design preview…
-      </div>
-    );
-  }
-
-  if (previewUrl) {
-    return (
-      <div className="rounded-xl overflow-hidden border border-gray-200 dark:border-zinc-700">
-        <img
-          src={previewUrl}
-          alt="Submitted design preview"
-          className="w-full h-auto max-h-96 object-contain bg-gray-50 dark:bg-zinc-800"
-        />
-      </div>
-    );
-  }
-
-  return (
-    <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-gray-50 dark:bg-zinc-900 p-4 text-sm text-gray-500 dark:text-gray-400">
-      {error || "No design preview is available for this submission."}
-    </div>
-  );
-}
 
 export default function StudentResultsPage() {
   const [results, setResults] = useState([]);
@@ -291,10 +200,7 @@ export default function StudentResultsPage() {
                   <p className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">Your Answer</p>
 
                   {ans.questionType === "design_lab" ? (
-                    <StudentDesignPreview
-                      designId={typeof ans.studentAnswer === "object" ? ans.studentAnswer?.designId : typeof ans.studentAnswer === "string" ? ans.studentAnswer : null}
-                      imageUrl={ans.studentAnswer?.designImageUrl || ans.fileUrls?.[0]}
-                    />
+                    <DesignSnapshotPreview snapshot={ans.designSnapshot} label="Your submitted design" />
                   ) : ["os_linux", "os_windows"].includes(ans.questionType) ? (
                     <div className="p-4 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl text-sm text-gray-800 dark:text-gray-200">
                       {ans.studentAnswer ? (
