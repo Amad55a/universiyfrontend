@@ -74,7 +74,6 @@ export default function TeacherGradingWorkspace() {
         manualScore: g.manualScore !== "" ? Number(g.manualScore) : null,
         teacherFeedback: g.teacherFeedback,
         privateNotes: g.privateNotes,
-        maxMarks: g.maxMarks,
       }));
       await axios.put(`/api/exams/teacher/${fromExamId}/submissions/${subId}/grade`, {
         answers,
@@ -98,7 +97,6 @@ export default function TeacherGradingWorkspace() {
         manualScore: g.manualScore !== "" ? Number(g.manualScore) : null,
         teacherFeedback: g.teacherFeedback,
         privateNotes: g.privateNotes,
-        maxMarks: g.maxMarks,
       }));
       await axios.put(`/api/exams/teacher/${fromExamId}/submissions/${subId}/grade`, {
         answers,
@@ -128,9 +126,13 @@ export default function TeacherGradingWorkspace() {
   };
 
   // ── Computed score summary ────────────────────────────────────────────────
-  const computedTotal = Object.values(grades).reduce((sum, g) => {
-    const ms = g.manualScore !== "" && g.manualScore !== null ? Number(g.manualScore) : null;
-    return sum + (ms ?? 0);
+  const computedTotal = (submission?.answers || []).reduce((sum, answer) => {
+    const questionId = answer.questionId?.toString?.() || answer.questionId;
+    const manualScore = grades[questionId]?.manualScore;
+    const selectedScore = manualScore !== "" && manualScore !== null && manualScore !== undefined
+      ? Number(manualScore)
+      : Number(answer.autoScore) || 0;
+    return sum + (Number.isFinite(selectedScore) ? selectedScore : 0);
   }, 0);
   const maxMarksTotal = exam
     ? submission?.answers?.reduce((s, a) => s + (a.maxMarks || 0), 0) || 0

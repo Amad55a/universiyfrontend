@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import axios from "axios";
-import * as fabric from "fabric";
 import { toast } from "sonner";
+import DesignSnapshotPreview from "../../../components/DesignSnapshotPreview";
 import {
   AlertCircle, CheckCircle2, XCircle, Award, ChevronUp, ChevronDown,
   Sparkles, Loader2, Code2, Terminal, Monitor
@@ -46,82 +46,140 @@ function formatAnswer(ans) {
   return String(ans);
 }
 
-function DesignPreview({ designId }) {
-  const [preview, setPreview] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+function decodeHtmlEntitiesOnce(source) {
+  return source
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#0*39;|&apos;/gi, "'")
+    .replace(/&amp;/gi, "&");
+}
 
-  useEffect(() => {
-    if (!designId) return;
-    let cancelled = false;
-    setLoading(true);
-    setError("");
-    setPreview(null);
+export function decodeLegacyHtmlSource(source, allowLegacyFragment = false) {
+  if (
+    typeof source !== "string" ||
+    (
+      !/^(?:<!-- HTML -->\s*)?&lt;!doctype\s+html\b/i.test(source.trim()) &&
+      !(allowLegacyFragment && /&lt;\/?[a-z][^&]*?&gt;/i.test(source))
+    )
+  ) {
+    return source;
+  }
+  return decodeHtmlEntitiesOnce(source);
+}
 
-    const loadPreview = async () => {
-      try {
-        const { data } = await axios.get(`/api/designs/${designId}`);
-        if (cancelled) return;
-        const page = data.pages?.[0];
-        const width = Number(data.width) || 1080;
-        const height = Number(data.height) || 1080;
-        if (!page?.canvas_json || page.canvas_json === "{}") {
-          setError("No design preview is available for this submission.");
-          return;
-        }
+function decodeLegacyLabSource(source, answerType) {
+  if (answerType === "labhtml") return decodeLegacyHtmlSource(source, true);
+  if (answerType === "lab" && typeof source === "string" && /&(?:lt|gt|quot|#0*39|apos);/i.test(source)) {
+    return decodeHtmlEntitiesOnce(source);
+  }
+  return decodeLegacyHtmlSource(source);
+}
 
-        const canvas = document.createElement("canvas");
-        const sc = new fabric.StaticCanvas(canvas, { width, height });
-        try {
-          const parsed = JSON.parse(page.canvas_json);
-          sc.loadFromJSON(parsed, () => {
-            if (cancelled) {
-              sc.dispose();
-              return;
-            }
-            sc.renderAll();
-            const multiplier = Math.min(320 / width, 320 / height, 1);
-            setPreview(sc.toDataURL({ format: "png", multiplier }));
-            sc.dispose();
-          });
-        } catch (err) {
-          sc.dispose();
-          setError("Unable to render the design preview.");
-        }
-      } catch (err) {
-        if (!cancelled) setError("Unable to load the submitted design.");
-      } finally {
-        if (!cancelled) setLoading(false);
+export function extractSubmittedCodeFiles(answer, answerType) {
+  if (typeof answer === "string") {
+    const isHtml = /^\s*(?:<!doctype\s+html|&lt;!doctype\s+html)/i.test(answer);
+    return [{
+      filename: isHtml ? "index.html" : "Submitted source",
+      source: decodeLegacyLabSource(answer, answerType),
+    }];
+  }
+  if (!answer || typeof answer !== "object" || Array.isArray(answer)) return [];
+
+  const sources = new Map();
+  const filenameFor = (language) => {
+    const normalized = String(language || "").trim();
+    const lower = normalized.toLowerCase();
+    if (/\.(html?|css|m?js|py|c|h|cpp|hpp|cs|sql|json|xml|svg|md|txt)$/i.test(normalized)) {
+      return normalized.replace(/^\.\//, "");
+    }
+    const filename = ({
+      html: "index.html",
+      css: "style.css",
+      js: "main.js",
+      javascript: "main.js",
+      python: "main.py",
+      c: "main.c",
+      cpp: "main.cpp",
+      csharp: "main.cs",
+      sql: "query.sql",
+    })[lower];
+    return filename || `main.${lower || "txt"}`;
+  };
+  const sourceOf = (file) => typeof file === "string"
+    ? file
+    : file && typeof file === "object"
+      ? file.content ?? file.source ?? file.code ?? file.text
+      : undefined;
+  const addSource = (name, file) => {
+    const source = sourceOf(file);
+    if (typeof source !== "string") return;
+    const filename = filenameFor(file?.filename || file?.name || file?.path || name);
+    sources.set(filename, source);
+  };
+
+  if (answer.codes && typeof answer.codes === "object" && !Array.isArray(answer.codes)) {
+    Object.entries(answer.codes).forEach(([name, file]) => addSource(name, file));
+  } else if (Array.isArray(answer.codes)) {
+    answer.codes.forEach((file, index) => {
+      if (typeof file === "string") {
+        addSource(`submitted-${index + 1}.txt`, file);
+      } else {
+        addSource(
+          file?.filename || file?.name || file?.path || file?.language || file?.lang || `submitted-${index + 1}.txt`,
+          file,
+        );
       }
-    };
-
-    loadPreview();
-    return () => {
-      cancelled = true;
-    };
-  }, [designId]);
-
-  if (loading) {
-    return (
-      <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-gray-50 dark:bg-zinc-900 p-4 text-sm text-gray-500 dark:text-gray-400">
-        Loading design preview…
-      </div>
-    );
+    });
+  }
+  for (const language of ["html", "css", "javascript", "js"]) {
+    if (Object.hasOwn(answer, language)) addSource(language, answer[language]);
+  }
+  if (Array.isArray(answer.files)) {
+    answer.files.forEach((file) => {
+      if (!file || typeof file !== "object") return;
+      addSource(file.filename || file.name || file.path || file.language || file.lang || "code", file);
+    });
   }
 
-  if (preview) {
-    return (
-      <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 overflow-hidden">
-        <img src={preview} alt="Student design preview" className="w-full h-auto object-contain" />
-      </div>
-    );
+  const selectedLanguage = answer.langId || answer.language;
+  if (typeof answer.code === "string" && answer.code.length > 0) {
+    if (selectedLanguage) {
+      const extension = ({
+        html: ".html",
+        css: ".css",
+        js: ".js",
+        javascript: ".js",
+        python: ".py",
+        c: ".c",
+        cpp: ".cpp",
+        csharp: ".cs",
+        sql: ".sql",
+      })[String(selectedLanguage).toLowerCase()];
+      const existingFile = extension && [...sources.keys()].find((filename) =>
+        filename.toLowerCase().endsWith(extension)
+      );
+      sources.set(existingFile || filenameFor(selectedLanguage), answer.code);
+    } else if (!sources.size) {
+      addSource(selectedLanguage || "code", answer.code);
+    }
   }
 
-  return (
-    <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-gray-50 dark:bg-zinc-900 p-4 text-sm text-gray-500 dark:text-gray-400">
-      {error || "No design preview is available for this submission."}
-    </div>
-  );
+  const orderedFilenames = ["index.html", "style.css", "main.js"];
+  const files = [...sources.entries()].sort(([filenameA], [filenameB]) => {
+    const orderA = orderedFilenames.indexOf(filenameA);
+    const orderB = orderedFilenames.indexOf(filenameB);
+    if (orderA >= 0 || orderB >= 0) {
+      return (orderA < 0 ? Number.MAX_SAFE_INTEGER : orderA) -
+        (orderB < 0 ? Number.MAX_SAFE_INTEGER : orderB);
+    }
+    return filenameA.localeCompare(filenameB);
+  }).map(([filename, source]) => ({
+    filename,
+    source: decodeLegacyLabSource(source, answerType),
+  }));
+
+  return files;
 }
 
 /**
@@ -175,11 +233,12 @@ export default function QuestionsTab({ submission, grades, onUpdateGrade, examId
 
         const qType = ans.questionType || ans.type || "";
         const isTerminalQ = ["os_linux", "os_windows"].includes(qType);
-        const isCodeQ = ["lab", "programming"].includes(qType) ||
+        const isCodeQ = ["lab", "programming", "labhtml", "html_css_js", "react_project"].includes(qType) ||
           (typeof ans.answer === "object" && (ans.answer?.code || ans.answer?.codes));
         const isDesignQ = qType === "design_lab" || (typeof ans.answer === "object" && ans.answer?.designId);
 
-        const { code: studentCode, lang: studentLang } = extractCodeAndLang(ans.answer);
+        const { lang: studentLang } = extractCodeAndLang(ans.answer);
+        const submittedCodeFiles = extractSubmittedCodeFiles(ans.answer, qType);
         const terminalOutput = ans.codeOutput || ans.answer?.codeOutput || "";
         const sessionId = (typeof ans.answer === "object") ? ans.answer?.sessionId : (typeof ans.answer === "string" ? String(ans.answer) : null);
 
@@ -237,14 +296,22 @@ export default function QuestionsTab({ submission, grades, onUpdateGrade, examId
 
                 {/* Code Questions */}
                 {isCodeQ ? (
-                  <div className="rounded-xl overflow-hidden border border-zinc-800 bg-zinc-950">
-                    <div className="flex items-center justify-between px-4 py-2 bg-zinc-900 border-b border-zinc-800 text-xs font-mono text-zinc-400">
-                      <span>📄 main.{studentLang || "code"}</span>
-                      <span className="text-[10px] uppercase text-emerald-400 font-bold">{studentLang || "code"} editor view</span>
-                    </div>
-                    <pre className="p-4 text-sm font-mono text-emerald-400 bg-zinc-950 overflow-auto max-h-96 leading-relaxed whitespace-pre">
-                      {studentCode || "(no code submitted)"}
-                    </pre>
+                  <div className="space-y-3">
+                    {submittedCodeFiles.length > 0 ? submittedCodeFiles.map(({ filename, source }) => (
+                      <section key={filename} className="rounded-xl overflow-hidden border border-zinc-800 bg-zinc-950">
+                        <div className="flex items-center justify-between px-4 py-2 bg-zinc-900 border-b border-zinc-800 text-xs font-mono text-zinc-400">
+                          <span>📄 {filename}</span>
+                          <span className="text-[10px] uppercase text-emerald-400 font-bold">Source code</span>
+                        </div>
+                        <pre className="p-4 text-sm font-mono text-emerald-400 bg-zinc-950 overflow-auto max-h-96 leading-relaxed whitespace-pre">
+                          {source || "(empty file)"}
+                        </pre>
+                      </section>
+                    )) : (
+                      <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4 text-sm font-mono text-zinc-400">
+                        (no source submitted)
+                      </div>
+                    )}
                   </div>
                 ) : isTerminalQ ? (
                   <div className="space-y-3">
@@ -278,17 +345,7 @@ export default function QuestionsTab({ submission, grades, onUpdateGrade, examId
                     <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-bold text-xs">
                       <Monitor className="w-4 h-4" /> Design Lab Canvas Submission
                     </div>
-                    {((typeof ans.answer === "object" && ans.answer?.designId) || typeof ans.answer === "string") ? (
-                      <div className="flex justify-center">
-                        <div className="max-w-sm max-h-96 overflow-auto">
-                          <DesignPreview designId={typeof ans.answer === "object" ? ans.answer?.designId : String(ans.answer)} />
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-gray-50 dark:bg-zinc-900 p-4 text-sm text-gray-500 dark:text-gray-400">
-                        No submitted design preview is available.
-                      </div>
-                    )}
+                    <DesignSnapshotPreview snapshot={ans.designSnapshot} label="Student's submitted design" />
                   </div>
                 ) : (
                   /* Standard / Text / MCQ Questions */

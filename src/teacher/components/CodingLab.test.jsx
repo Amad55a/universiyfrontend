@@ -96,6 +96,43 @@ describe("exam coding lab", () => {
     expect(screen.getByLabelText("Source code")).toHaveValue('print("recovered")');
   });
 
+  it("submits HTML, CSS, and JavaScript editor buffers together", () => {
+    const onSave = vi.fn();
+    render(
+      <StudentCodingLab
+        examId="exam-1"
+        question={{
+          ...question,
+          allowedLanguages: ["html", "css", "javascript"],
+          starterCode: { html: "", css: "", javascript: "" },
+        }}
+        onSave={onSave}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Source code"), {
+      target: { value: "<h1>Somali</h1>" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /style\.css/ }));
+    fireEvent.change(screen.getByLabelText("Source code"), {
+      target: { value: "body { background: red; }" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /main\.js/ }));
+    fireEvent.change(screen.getByLabelText("Source code"), {
+      target: { value: "document.title = 'Somali';" },
+    });
+
+    expect(onSave).toHaveBeenLastCalledWith({
+      langId: "javascript",
+      code: "document.title = 'Somali';",
+      codes: {
+        html: "<h1>Somali</h1>",
+        css: "body { background: red; }",
+        javascript: "document.title = 'Somali';",
+      },
+    });
+  });
+
   it("shows stderr and timeout information without claiming success", async () => {
     axios.post.mockResolvedValueOnce({
       data: {

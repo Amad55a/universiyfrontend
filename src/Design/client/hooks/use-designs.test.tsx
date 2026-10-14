@@ -57,4 +57,28 @@ describe("useDesigns", () => {
       height: 1080,
     });
   });
+
+  it("flushes the latest canvas immediately and rejects submission when saving fails", async () => {
+    const { result } = renderHook(() => useDesigns(() => '{"objects":[{"type":"text"}]}'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await act(async () => { await result.current.loadDesign("design-1"); });
+    await act(async () => {
+      result.current.scheduleSave({ width: 800, height: 600 });
+      await result.current.flushSave();
+    });
+    expect(apiMock).toHaveBeenCalledWith("PUT", "/api/pages/page-1", {
+      canvas_json: '{"objects":[{"type":"text"}]}',
+    });
+
+    apiMock.mockImplementation(async (method: string, path: string) => {
+      if (method === "PUT" && path === "/api/pages/page-1") throw new Error("save unavailable");
+      if (method === "GET" && path === "/api/designs") return [];
+      if (method === "GET" && path === "/api/templates") return [];
+      if (method === "GET" && path === "/api/designs/design-1") {
+        return { id: "design-1", width: 800, height: 600, pages: [{ id: "page-1", canvas_json: "{}" }] };
+      }
+      throw new Error(`Unexpected API request: ${method} ${path}`);
+    });
+    await expect(act(async () => result.current.flushSave())).rejects.toThrow("save unavailable");
+  });
 });
