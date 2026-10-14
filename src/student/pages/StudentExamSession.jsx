@@ -46,7 +46,6 @@ import LinuxLab from "@/teacher/components/LinuxLab";
 import DesignLab from "@/teacher/components/DesignLab";
 import NetworkingLab from "@/teacher/components/NetworkingLab";
 import WindowsLab from "@/teacher/components/WindowsLab";
-import { uploadDesignToCloudinary } from "@/utils/designUploadUtils.js";
 
 // ─── Shared Duolingo-style primary button ─────────────────────────────────────
 const PRIMARY_BTN =
@@ -139,6 +138,8 @@ export default function StudentExamSession() {
   const [saveError, setSaveError] = useState("");
   const [saveRetry, setSaveRetry] = useState(0);
   const answerRevisionRef = useRef(0);
+  const serverClockOffsetRef = useRef(0);
+  const submitInFlightRef = useRef(false);
   const [fullscreenError, setFullscreenError] = useState("");
 
   const exam = examSession?.exam;
@@ -229,6 +230,7 @@ export default function StudentExamSession() {
   // ─── Submit exam ─────────────────────────────────────────────────────────────
   const handleSubmit = useCallback(
     async (isAuto = false) => {
+      if (submitInFlightRef.current) return;
       if (!isAuto) {
         const ok = window.confirm(
           t("exam.confirmSubmit") ||
@@ -236,22 +238,10 @@ export default function StudentExamSession() {
         );
         if (!ok) return;
       }
+      submitInFlightRef.current = true;
       setIsSubmitting(true);
       try {
-        // Prepare answers for submission
-        let finalAnswers = Object.values(answers);
-
-        // For design_lab questions, we already have the designImageUrl stored
-        // If not, try to grab it from the exam HTML canvas if available
-        finalAnswers = finalAnswers.map((ans) => {
-          const question = exam?.questions?.find((q) => q._id === ans.questionId);
-          // If it's a design lab and we don't have an image URL yet, keep designId
-          // The backend will handle storing what we have
-          return {
-            ...ans,
-            answer: ans.answer, // Will contain { designId, designImageUrl } if exported
-          };
-        });
+        const finalAnswers = Object.values(answers);
 
         const clientRevision = Math.max(
           Date.now(),
@@ -273,6 +263,7 @@ export default function StudentExamSession() {
         navigate("/dashboard");
       } catch (err) {
         toast.error(err.response?.data?.message || "Submit failed");
+        submitInFlightRef.current = false;
         setIsSubmitting(false);
       }
     },
@@ -325,21 +316,27 @@ export default function StudentExamSession() {
   useEffect(() => {
     if (!exam) return;
     const sessionEnd = new Date(exam.endTime).getTime();
-    setTimeLeft(Math.max(0, Math.floor((sessionEnd - Date.now()) / 1000)));
+    const getRemainingSeconds = () =>
+      Math.max(0, Math.floor((sessionEnd - (Date.now() + serverClockOffsetRef.current)) / 1000));
+    setTimeLeft(getRemainingSeconds());
 
     const timer = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          if (exam.security?.autoSubmit) handleSubmit(true);
-          return 0;
-        }
-        return prev - 1;
-      });
+      const remaining = getRemainingSeconds();
+      setTimeLeft(remaining);
+      if (remaining === 0) {
+        clearInterval(timer);
+        handleSubmit(true);
+      }
     }, 1000);
     return () => clearInterval(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [exam]);
+  }, [exam, handleSubmit]);
+
+  useEffect(() => {
+    const serverTime = Date.parse(examSession?.serverTime);
+    if (Number.isFinite(serverTime)) {
+      serverClockOffsetRef.current = serverTime - Date.now();
+    }
+  }, [examSession?.serverTime]);
 
   // ─── Backend autosave (3-second debounce, belt-and-suspenders) ──────────────
   // Browser draft storage covers refresh; this writes the same answers to the
@@ -677,6 +674,7 @@ export default function StudentExamSession() {
                   <StudentCodingLab
                     key={activeQuestion._id}
                     question={activeQuestion}
+                    examId={examId}
                     value={answers[activeQuestion._id]?.answer}
                     onSave={(val) =>
                       handleAnswerChange(activeQuestion._id, val)

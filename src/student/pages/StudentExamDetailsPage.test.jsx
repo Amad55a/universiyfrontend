@@ -23,6 +23,7 @@ const exam = {
   sebRequired: false,
   attemptStatus: null,
   security: {},
+  description: "A scheduled assessment.",
 };
 
 function ExamSessionRoute() {
@@ -61,9 +62,12 @@ describe("student browser exam launch", () => {
     expect(api.post).not.toHaveBeenCalled();
   });
 
-  it("issues and redeems a one-time token before navigating without putting it in the URL", async () => {
+  it("validates the exam token, then issues and redeems a one-time browser token", async () => {
     const token = "a".repeat(43);
     api.post
+      .mockResolvedValueOnce({
+        data: { data: { examId: exam.id } },
+      })
       .mockResolvedValueOnce({
         data: {
           data: {
@@ -78,16 +82,24 @@ describe("student browser exam launch", () => {
       });
     renderDetails();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Start exam" }));
+    fireEvent.change(await screen.findByLabelText("Exam access token"), {
+      target: { value: "MIDTERM-2026" },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Validate token and start exam" }));
 
     await waitFor(() => {
       expect(api.post).toHaveBeenNthCalledWith(
         1,
-        `/exams/student/${exam.id}/launch-token`,
-        {},
+        "/exams/student/validate-token",
+        { token: "MIDTERM-2026" },
       );
       expect(api.post).toHaveBeenNthCalledWith(
         2,
+        `/exams/student/${exam.id}/launch-token`,
+        { token: "MIDTERM-2026" },
+      );
+      expect(api.post).toHaveBeenNthCalledWith(
+        3,
         "/exams/student/launch-token/redeem",
         { token },
       );
@@ -100,6 +112,9 @@ describe("student browser exam launch", () => {
   it("keeps the student on the details page and offers retry when launch fails", async () => {
     api.post
       .mockRejectedValueOnce({ response: { data: { message: "Launch token expired." } } })
+      .mockResolvedValueOnce({
+        data: { data: { examId: exam.id } },
+      })
       .mockResolvedValueOnce({
         data: {
           data: {
@@ -114,7 +129,10 @@ describe("student browser exam launch", () => {
       });
     renderDetails();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Start exam" }));
+    fireEvent.change(await screen.findByLabelText("Exam access token"), {
+      target: { value: "MIDTERM-2026" },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Validate token and start exam" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Launch token expired.");
     fireEvent.click(screen.getByRole("button", { name: "Retry launch" }));
     expect(await screen.findByText(`Exam session ${exam.id}`)).toBeInTheDocument();
@@ -138,12 +156,12 @@ describe("student browser exam launch", () => {
       });
     const { unmount } = renderDetails();
     expect(await screen.findByText(/Safe Exam Browser is required/)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Start exam" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Validate token and start exam" })).not.toBeInTheDocument();
     unmount();
 
     renderDetails();
     expect(await screen.findByText(/managed browser lock/)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Start exam" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Validate token and start exam" })).not.toBeInTheDocument();
     expect(api.post).not.toHaveBeenCalled();
   });
 
@@ -159,8 +177,8 @@ describe("student browser exam launch", () => {
       },
     });
     renderDetails();
-    expect(await screen.findByText(/Camera still images may be sent to exam staff/)).toBeInTheDocument();
-    expect(screen.getByText(/microphone audio is not recorded/)).toBeInTheDocument();
+    expect(await screen.findByText(/device status only.*not recorded or transmitted/i)).toBeInTheDocument();
+    expect(screen.getByText(/video and microphone audio are not recorded or transmitted/i)).toBeInTheDocument();
   });
 
   it("offers resume for an existing in-progress attempt", async () => {
@@ -177,6 +195,19 @@ describe("student browser exam launch", () => {
       },
     });
     renderDetails();
-    expect(await screen.findByRole("button", { name: "Resume exam" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Validate token and resume exam" })).toBeInTheDocument();
+  });
+
+  it("does not issue a browser launch token when the human exam token is rejected", async () => {
+    api.post.mockRejectedValueOnce({
+      response: { data: { message: "Invalid exam access token." } },
+    });
+    renderDetails();
+    fireEvent.change(await screen.findByLabelText("Exam access token"), {
+      target: { value: "WRONG" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Validate token and start exam" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Invalid exam access token.");
+    expect(api.post).toHaveBeenCalledTimes(1);
   });
 });

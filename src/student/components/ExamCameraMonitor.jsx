@@ -1,6 +1,6 @@
 /**
  * Practical camera monitor — requires webcam when exam.security.cameraRequired.
- * Shows a small preview, sends heartbeats + periodic JPEG snapshots for teacher review.
+ * Shows a local preview and sends device-status heartbeats only.
  * Does NOT run ML face detection; missing camera is flagged for the lecturer.
  */
 import React, { useEffect, useRef, useState } from "react";
@@ -13,7 +13,6 @@ export default function ExamCameraMonitor({
   microphoneRequired = false,
 }) {
   const videoRef = useRef(null);
-  const canvasRef = useRef(null);
   const streamRef = useRef(null);
   const cameraOkRef = useRef(false);
   const microphoneOkRef = useRef(false);
@@ -26,7 +25,6 @@ export default function ExamCameraMonitor({
     if ((!required && !microphoneRequired) || !examId) return;
     let cancelled = false;
     let heartbeatTimer;
-    let snapshotTimer;
     let mediaDeviceChangeHandler;
 
     const sendHeartbeat = async (snapshot = null, note) => {
@@ -49,17 +47,6 @@ export default function ExamCameraMonitor({
           setError("Couldn't contact the exam monitoring service. Check your connection and retry.");
         }
       }
-    };
-
-    const captureSnapshot = () => {
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-      if (!video || !canvas || video.readyState < 2) return null;
-      canvas.width = 320;
-      canvas.height = 180;
-      const ctx = canvas.getContext("2d");
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      return canvas.toDataURL("image/jpeg", 0.55);
     };
 
     const startCamera = async () => {
@@ -129,13 +116,6 @@ export default function ExamCameraMonitor({
         );
       }, 12_000);
 
-      if (required) {
-        snapshotTimer = setInterval(() => {
-          const snap = captureSnapshot();
-          if (snap) sendHeartbeat(snap);
-        }, 30_000);
-      }
-
       if (microphoneRequired && navigator.mediaDevices?.addEventListener) {
         mediaDeviceChangeHandler = async () => {
           try {
@@ -158,7 +138,6 @@ export default function ExamCameraMonitor({
     return () => {
       cancelled = true;
       clearInterval(heartbeatTimer);
-      clearInterval(snapshotTimer);
       if (mediaDeviceChangeHandler) {
         navigator.mediaDevices?.removeEventListener?.("devicechange", mediaDeviceChangeHandler);
       }
@@ -191,7 +170,6 @@ export default function ExamCameraMonitor({
           {microphoneOk ? "Microphone available (not recording)" : "Microphone required"}
         </div>
       )}
-      {required && <canvas ref={canvasRef} className="hidden" />}
       {error && (
         <div className="px-2 py-1 text-[10px] text-red-300 bg-red-950/80">
           <p>{error}</p>

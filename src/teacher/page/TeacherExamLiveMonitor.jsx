@@ -113,13 +113,11 @@ export default function TeacherExamLiveMonitor() {
             className="rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 overflow-hidden"
           >
             <div className="aspect-video bg-neutral-950 relative">
-              {s.lastSnapshot ? (
-                <img src={s.lastSnapshot} alt="" className="w-full h-full object-cover" />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center text-neutral-500 text-sm">
-                  No snapshot yet
-                </div>
-              )}
+              <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-neutral-400 text-sm">
+                <span>{s.cameraOk ? "Camera available" : "Camera unavailable"}</span>
+                <span>{s.microphoneOk ? "Microphone available" : "Microphone unavailable"}</span>
+                <span className="text-xs text-neutral-500">Device status only · no media recorded</span>
+              </div>
               <span
                 className={`absolute top-2 left-2 text-[10px] font-bold px-2 py-0.5 rounded-full ${
                   s.online

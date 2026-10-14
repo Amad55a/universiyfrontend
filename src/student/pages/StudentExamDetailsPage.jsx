@@ -15,8 +15,23 @@ function formatDate(value) {
 export default function StudentExamDetailsPage() {
   const { examId } = useParams();
   const navigate = useNavigate();
-  const [launching, setLaunching] = useState(false);
-  const [launchMessage, setLaunchMessage] = useState("");
+  const [launchForm, setLaunchForm] = useState({
+    examId: null,
+    launching: false,
+    launchMessage: "",
+    accessToken: "",
+  });
+  const formForExam = launchForm.examId === examId;
+  const launching = formForExam && launchForm.launching;
+  const launchMessage = formForExam ? launchForm.launchMessage : "";
+  const accessToken = formForExam ? launchForm.accessToken : "";
+  const updateLaunchForm = (updates) => setLaunchForm((current) => ({
+    ...(current.examId === examId
+      ? current
+      : { examId, launching: false, launchMessage: "", accessToken: "" }),
+    ...updates,
+    examId,
+  }));
 
   const {
     data: exam,
@@ -36,12 +51,23 @@ export default function StudentExamDetailsPage() {
 
   const handleStartExam = async () => {
     if (!exam?.id || !canStartInBrowser || launching) return;
-    setLaunching(true);
-    setLaunchMessage("");
+    if (!accessToken.trim()) {
+      updateLaunchForm({ launchMessage: "Enter the exam access token provided by your instructor." });
+      return;
+    }
+    updateLaunchForm({ launching: true, launchMessage: "" });
     try {
+      const { data: validationResponse } = await api.post(
+        "/exams/student/validate-token",
+        { token: accessToken.trim() },
+      );
+      if (String(validationResponse?.data?.examId) !== exam.id) {
+        throw new Error("That access token is not for this exam.");
+      }
+
       const { data: issueResponse } = await api.post(
         `/exams/student/${exam.id}/launch-token`,
-        {},
+        { token: accessToken.trim() },
       );
       const issued = issueResponse?.data;
       const expiry = Date.parse(issued?.expiresAt);
@@ -68,10 +94,10 @@ export default function StudentExamDetailsPage() {
       const message = launchError.response?.data?.message ||
         launchError.message ||
         "Could not start the exam. Check your connection and try again.";
-      setLaunchMessage(message);
+      updateLaunchForm({ launchMessage: message });
       toast.error(message);
     } finally {
-      setLaunching(false);
+      updateLaunchForm({ launching: false });
     }
   };
 
@@ -90,7 +116,7 @@ export default function StudentExamDetailsPage() {
     );
   }
 
-  const statusText = exam.status.replaceAll("-", " ");
+  const statusText = (exam.status || "unknown").replaceAll("-", " ");
   return (
     <main className="mx-auto w-full max-w-4xl space-y-6 p-4 sm:p-8">
       <Link to="/exam-portal" className="inline-flex items-center gap-2 text-sm font-semibold text-[#2C2DE0]">
@@ -106,6 +132,38 @@ export default function StudentExamDetailsPage() {
             <Clock3 className="h-4 w-4" /> {exam.duration} minutes
           </span>
         </div>
+
+        {(exam.courseName || exam.courseCode || exam.teacherName || exam.classCode) && (
+          <dl className="mt-5 grid gap-3 text-sm sm:grid-cols-2">
+            {(exam.courseName || exam.courseCode) && (
+              <div>
+                <dt className="font-semibold text-gray-500 dark:text-zinc-400">Course or subject</dt>
+                <dd>{[exam.courseCode, exam.courseName].filter(Boolean).join(" — ")}</dd>
+              </div>
+            )}
+            {exam.teacherName && (
+              <div>
+                <dt className="font-semibold text-gray-500 dark:text-zinc-400">Instructor</dt>
+                <dd>{exam.teacherName}</dd>
+              </div>
+            )}
+            {(exam.classCode || exam.section) && (
+              <div>
+                <dt className="font-semibold text-gray-500 dark:text-zinc-400">Class</dt>
+                <dd>{[exam.classCode, exam.section].filter(Boolean).join(" · ")}</dd>
+              </div>
+            )}
+          </dl>
+        )}
+
+        {exam.description && exam.description !== exam.instructions && (
+          <section className="mt-6" aria-labelledby="exam-description">
+            <h2 id="exam-description" className="font-semibold">About this exam</h2>
+            <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-gray-700 dark:text-zinc-300">
+              {exam.description}
+            </p>
+          </section>
+        )}
 
         <dl className="mt-6 grid gap-4 sm:grid-cols-2">
           <div className="rounded-xl bg-gray-50 p-4 dark:bg-zinc-800">
@@ -154,28 +212,54 @@ export default function StudentExamDetailsPage() {
           {(exam.security?.cameraRequired || exam.security?.microphoneRequired) && (
             <p className="mt-3 text-sm text-amber-800 dark:text-amber-300">
               {exam.security.cameraRequired && exam.security.microphoneRequired
-                ? "This exam asks for camera and microphone permission. Camera still images may be sent to exam staff; microphone audio is not recorded by UniCORE."
+                ? "This exam checks camera and microphone availability. UniCORE sends device status only; video and microphone audio are not recorded or transmitted."
                 : exam.security.cameraRequired
-                  ? "This exam asks for camera permission and sends periodic still images to exam staff while the session is open."
+                  ? "This exam checks camera availability. UniCORE sends device status only; video is not recorded or transmitted."
                   : "This exam checks microphone permission and availability. Audio is not recorded; the microphone permission stream is stopped after the check."}
             </p>
           )}
         </section>
 
-        {canStartInBrowser && (
-          <button
-            type="button"
-            onClick={handleStartExam}
-            disabled={launching}
-            className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#2C2DE0] px-5 py-3 font-semibold text-white disabled:opacity-60 sm:w-auto"
+        {exam.resultsAvailable && (
+          <Link
+            to="/results"
+            className="mt-5 inline-flex rounded-lg border px-4 py-2 text-sm font-semibold text-[#2C2DE0] hover:bg-indigo-50 dark:text-indigo-200 dark:hover:bg-zinc-800"
           >
-            {launching && <Loader2 className="h-4 w-4 animate-spin" />}
-            {launching
-              ? "Preparing exam session…"
-              : exam.attemptStatus === "in-progress"
-                ? "Resume exam"
-                : "Start exam"}
-          </button>
+            Review published results
+          </Link>
+        )}
+
+        {canStartInBrowser && (
+          <div className="mt-6 space-y-3">
+            <div>
+              <label htmlFor="exam-access-token" className="mb-1 block text-sm font-semibold">
+                Exam access token
+              </label>
+              <input
+                id="exam-access-token"
+                type="password"
+                autoComplete="off"
+                autoCapitalize="characters"
+                value={accessToken}
+                onChange={(event) => updateLaunchForm({ accessToken: event.target.value })}
+                placeholder="Enter the token provided by your instructor"
+                className="w-full max-w-md rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-600 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={handleStartExam}
+              disabled={launching || !accessToken.trim()}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#2C2DE0] px-5 py-3 font-semibold text-white disabled:opacity-60 sm:w-auto"
+            >
+              {launching && <Loader2 className="h-4 w-4 animate-spin" />}
+              {launching
+                ? "Preparing exam session…"
+                : exam.attemptStatus === "in-progress"
+                  ? "Validate token and resume exam"
+                  : "Validate token and start exam"}
+            </button>
+          </div>
         )}
 
         {launchMessage && (

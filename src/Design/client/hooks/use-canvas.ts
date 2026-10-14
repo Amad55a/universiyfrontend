@@ -36,6 +36,7 @@ export function useCanvasState() {
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [lastModified, setLastModified] = useState(0);
+  const [assetError, setAssetError] = useState("");
   const isRestoringRef = useRef<Set<string>>(new Set());
 
   // Helper to get the active canvas
@@ -228,6 +229,7 @@ export function useCanvasState() {
       const canvas = getActiveCanvas();
       if (!canvas) return;
       try {
+        setAssetError("");
         const img = await fabric.FabricImage.fromURL(url, { crossOrigin: "anonymous" });
         const scale = Math.min(
           (canvasWidth * 0.6) / (img.width || 1),
@@ -245,6 +247,7 @@ export function useCanvasState() {
         canvas.requestRenderAll();
       } catch (e) {
         console.error("Failed to load image:", e);
+        setAssetError("The selected image could not be loaded. Check that it is available and try again.");
       }
     },
     [getActiveCanvas, canvasWidth, canvasHeight]
@@ -258,10 +261,12 @@ export function useCanvasState() {
       const pageId = activeCanvasIdRef.current;
       if (!canvas || !pageId) return;
       if (type === "color" || type === "gradient") {
+        setAssetError("");
         canvas.backgroundColor = value;
         canvas.requestRenderAll();
         saveHistory(pageId);
       } else if (type === "image") {
+        setAssetError("");
         fabric.FabricImage.fromURL(value, { crossOrigin: "anonymous" }).then((img) => {
           const scaleX = canvasWidth / (img.width || 1);
           const scaleY = canvasHeight / (img.height || 1);
@@ -274,6 +279,9 @@ export function useCanvasState() {
           canvas.sendObjectToBack(img);
           canvas.requestRenderAll();
           saveHistory(pageId);
+        }).catch((error) => {
+          console.error("Failed to load background image:", error);
+          setAssetError("The background image could not be loaded. Check that it is available and try again.");
         });
       }
     },
@@ -356,8 +364,11 @@ export function useCanvasState() {
         canvas.setViewportTransform([dpr, 0, 0, dpr, 0, 0]);
         canvas.requestRenderAll();
       }
+      if (width !== canvasWidth || height !== canvasHeight) {
+        setLastModified((modified) => Math.max(Date.now(), modified + 1));
+      }
     },
-    []
+    [canvasWidth, canvasHeight]
   );
 
   // ── Zoom ────────────────────────────────────────────────────────────
@@ -512,5 +523,6 @@ export function useCanvasState() {
     getCanvasJSONForPage,
     loadTemplate,
     lastModified,
+    assetError,
   };
 }

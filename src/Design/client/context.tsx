@@ -65,6 +65,8 @@ export interface EditorContextValue {
   deleteDesign: (id: string) => Promise<void>;
   renameDesign: (id: string, name: string) => Promise<void>;
   saving: boolean;
+  error: string;
+  reportError: (message: string) => void;
 
   // Pages
   pages: Page[];
@@ -81,6 +83,7 @@ export interface EditorContextValue {
 
   // State
   loading: boolean;
+  assetError: string;
 
   // Teacher Resources
   teacherResources?: string[];

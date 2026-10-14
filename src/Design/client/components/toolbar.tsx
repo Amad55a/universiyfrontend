@@ -27,6 +27,8 @@ export function Toolbar() {
     exportPNG,
     activeDesign,
     renameDesign,
+    saving,
+    error,
   } = useEditor();
 
   const [showSizeDropdown, setShowSizeDropdown] = useState(false);
@@ -74,7 +76,7 @@ export function Toolbar() {
           ) : (
             <span
               className="text-xs font-semibold text-zinc-600 cursor-pointer hover:text-zinc-900 transition-colors"
-              onDblClick={startRename}
+              onDoubleClick={startRename}
             >
               {activeDesign.name}
             </span>
@@ -135,7 +137,11 @@ export function Toolbar() {
       </div>
 
       {/* Right: Zoom + Export */}
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-2">
+        <span role={error ? "alert" : "status"} className={`text-[10px] ${error ? "text-red-600" : saving ? "text-amber-600" : "text-emerald-700"}`}>
+          {error ? "Save error" : saving ? "Saving…" : "Saved"}
+        </span>
+        <div className="flex items-center gap-1.5">
         <button
           className={ACTION_BTN}
           onClick={zoomOut}
@@ -171,6 +177,7 @@ export function Toolbar() {
           <Download size={13} />
           Export
         </button>
+        </div>
       </div>
     </div>
   );

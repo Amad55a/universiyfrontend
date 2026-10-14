@@ -5,18 +5,39 @@ import { useRouter } from "./hooks/use-router";
 import { Editor } from "./components/editor";
 import { Home } from "./components/home";
 import WebFont from "webfontloader";
-import { useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-export function App({ question, initialDesignId, onDesignCreated }: {
+export function App({ question, initialDesignId, onDesignCreated, embedded = false }: {
   question?: any;
   initialDesignId?: string;
   onDesignCreated?: (id: string) => void;
+  embedded?: boolean;
 } = {}) {
   const { path, navigate, designId } = useRouter();
+  // Exam questions render this editor inside the existing exam route. In that
+  // mode there is no /design/:id URL, so the persisted answer is authoritative.
+  const currentDesignId = initialDesignId || designId;
   const canvasState = useCanvasState();
   const designState = useDesigns(canvasState.getCanvasJSONForPage);
+  const [fontWarning, setFontWarning] = useState("");
+  const designCreationStartedRef = useRef(false);
+  const onDesignCreatedRef = useRef(onDesignCreated);
 
-  // Load Google Fonts
+  useEffect(() => {
+    onDesignCreatedRef.current = onDesignCreated;
+  }, [onDesignCreated]);
+
+  const createEmbeddedDesign = useCallback(async () => {
+    if (designCreationStartedRef.current) return;
+    designCreationStartedRef.current = true;
+    const id = await designState.createDesign();
+    if (id) {
+      onDesignCreatedRef.current?.(id);
+    } else {
+      designCreationStartedRef.current = false;
+    }
+  }, [designState.createDesign]);
+
   useEffect(() => {
     WebFont.load({
       google: {
@@ -33,17 +54,19 @@ export function App({ question, initialDesignId, onDesignCreated }: {
           "Merriweather:400,700",
         ],
       },
+      active: () => setFontWarning(""),
+      inactive: () => setFontWarning("Some fonts could not be loaded. The editor is using browser fallback fonts."),
     });
   }, []);
 
   // Load design from URL on initial load and when designId changes
   useEffect(() => {
-    if (designId && !designState.loading) {
-      if (designState.activeDesign?.id !== designId) {
-        designState.loadDesign(designId);
+    if (currentDesignId && !designState.loading) {
+      if (designState.activeDesign?.id !== currentDesignId) {
+        designState.loadDesign(currentDesignId);
       }
     }
-  }, [designId, designState.loading]);
+  }, [currentDesignId, designState.loading]);
 
   // Sync canvas size to the loaded design's dimensions
   useEffect(() => {
@@ -65,29 +88,22 @@ export function App({ question, initialDesignId, onDesignCreated }: {
   // Auto-save on every canvas modification (debounced inside scheduleSave)
   useEffect(() => {
     if (canvasState.lastModified > 0) {
-      designState.scheduleSave();
+      designState.scheduleSave({
+        width: canvasState.canvasWidth,
+        height: canvasState.canvasHeight,
+      });
     }
   }, [canvasState.lastModified]);
 
-  // Auto-create design if no designId AND no initialDesignId
-  // When the student returns to a design question, initialDesignId is set
-  // from the stored answer so we load their existing canvas instead of
-  // creating a new blank one.
   useEffect(() => {
     if (initialDesignId) {
-      // Provided from parent (student returning to this question)
       if (!designState.loading && designState.activeDesign?.id !== initialDesignId) {
         designState.loadDesign(initialDesignId);
       }
-    } else if (!designId && !designState.loading) {
-      designState.createDesign().then(id => {
-        if (id) {
-          navigate(`/design/${id}`);
-          onDesignCreated?.(id); // Report back so parent can persist it
-        }
-      });
+    } else if (embedded && !currentDesignId && !designId && !designState.loading && !designState.activeDesign) {
+      void createEmbeddedDesign();
     }
-  }, [designId, designState.loading, initialDesignId]);
+  }, [currentDesignId, designId, designState.loading, designState.activeDesign, initialDesignId, embedded, createEmbeddedDesign]);
 
   if (designState.loading) {
     return (
@@ -100,9 +116,38 @@ export function App({ question, initialDesignId, onDesignCreated }: {
     );
   }
 
+  if (!embedded && !designId) {
+    return (
+      <EditorContext.Provider value={{ ...canvasState, ...designState, navigate }}>
+        <Home />
+      </EditorContext.Provider>
+    );
+  }
 
+  if (designState.error && (!designState.activeDesign || designState.activeDesign.id !== currentDesignId)) {
+    return (
+      <div role="alert" className="flex h-full flex-col items-center justify-center gap-3 bg-[#F3F4F7] p-6 text-center text-zinc-700">
+        <p className="font-medium">Design Lab could not load.</p>
+        <p className="text-sm">{designState.error}</p>
+        <button className="rounded border px-3 py-2" onClick={() => currentDesignId ? designState.loadDesign(currentDesignId) : createEmbeddedDesign()}>
+          Retry
+        </button>
+      </div>
+    );
+  }
 
-  if (!designId) {
+  if (currentDesignId && designState.activeDesign?.id !== currentDesignId) {
+    return (
+      <div role="status" className="flex h-full items-center justify-center bg-[#F3F4F7]">
+        <div className="text-center">
+          <div className="spinner !w-6 !h-6 !border-accent/30 !border-t-accent mb-3 mx-auto" />
+          <p className="text-zinc-400 text-sm">Loading saved design…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!currentDesignId && !designState.activeDesign) {
     return (
       <div className="flex items-center justify-center h-full bg-[#F3F4F7]">
         <div className="text-center">
@@ -117,6 +162,7 @@ export function App({ question, initialDesignId, onDesignCreated }: {
   const contextValue = {
     ...canvasState,
     ...designState,
+    error: designState.error || canvasState.assetError,
     // activeCanvasId is the source of truth for which page is active
     activePageId: canvasState.activeCanvasId ?? designState.activePageId,
     navigate,
@@ -127,6 +173,11 @@ export function App({ question, initialDesignId, onDesignCreated }: {
 
   return (
     <div className="design-lab-root h-full">
+      {fontWarning && (
+        <p role="note" className="border-b border-amber-300 bg-amber-50 px-3 py-1 text-xs text-amber-900">
+          {fontWarning}
+        </p>
+      )}
       <EditorContext.Provider value={contextValue}>
         <Editor />
       </EditorContext.Provider>
