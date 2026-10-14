@@ -66,6 +66,36 @@ describe("exam coding lab", () => {
     expect(output.textContent).toBe("first line\nsecond line\n");
   });
 
+  it("shows and preserves a scalar Python starter instead of ignoring the exam template", async () => {
+    render(
+      <StudentCodingLab
+        examId="exam-1"
+        question={{
+          ...question,
+          programmingLanguage: "python",
+          starterCode: 'print("dad")',
+        }}
+      />,
+    );
+
+    const editor = screen.getByLabelText("Source code");
+    expect(editor).toHaveValue('print("dad")');
+    fireEvent.change(editor, { target: { value: 'print("student edit")' } });
+    expect(editor).toHaveValue('print("student edit")');
+  });
+
+  it("recovers a legacy source string even when the saved language map is empty", async () => {
+    render(
+      <StudentCodingLab
+        examId="exam-1"
+        question={question}
+        value={{ langId: "python", code: 'print("recovered")', codes: {} }}
+      />,
+    );
+
+    expect(screen.getByLabelText("Source code")).toHaveValue('print("recovered")');
+  });
+
   it("shows stderr and timeout information without claiming success", async () => {
     axios.post.mockResolvedValueOnce({
       data: {
@@ -86,6 +116,36 @@ describe("exam coding lab", () => {
     expect(await screen.findByText(/Execution timed out/)).toBeInTheDocument();
     expect(screen.getByLabelText("Standard error")).toHaveTextContent("SyntaxError: invalid syntax");
     expect(screen.getByText("exit -1")).toBeInTheDocument();
+  });
+
+  it("renders Azure stdout and stderr separately and clears stale output while running", async () => {
+    let finishRun;
+    axios.post.mockImplementationOnce(() => new Promise((resolve) => {
+      finishRun = resolve;
+    }));
+    render(<StudentCodingLab examId="exam-1" question={question} />);
+    fireEvent.click(await screen.findByRole("button", { name: /Run Code/ }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Running the current editor source");
+    expect(screen.queryByText(/No stdout output/)).not.toBeInTheDocument();
+    finishRun({
+      data: {
+        data: {
+          ok: false,
+          stdout: "before error\n",
+          stderr: "ValueError: UNICORE_TEST_ERROR\n",
+          output: "before error\nValueError: UNICORE_TEST_ERROR\n",
+          exitCode: 1,
+          executionTime: 12,
+          timedOut: false,
+          executionStatus: "failed",
+        },
+      },
+    });
+
+    expect(await screen.findByLabelText("Standard output")).toHaveTextContent("before error");
+    expect(screen.getByLabelText("Standard error")).toHaveTextContent("ValueError: UNICORE_TEST_ERROR");
+    expect(screen.getByText("Execution failed")).toBeInTheDocument();
   });
 
   it("reports unavailable execution services instead of showing fake output", async () => {

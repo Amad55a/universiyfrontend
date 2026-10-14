@@ -7,8 +7,10 @@ import { Home } from "./components/home";
 import WebFont from "webfontloader";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-export function App({ question, initialDesignId, onDesignCreated, embedded = false }: {
+export function App({ question, examId, questionId, initialDesignId, onDesignCreated, embedded = false }: {
   question?: any;
+  examId?: string;
+  questionId?: string;
   initialDesignId?: string;
   onDesignCreated?: (id: string) => void;
   embedded?: boolean;
@@ -18,7 +20,7 @@ export function App({ question, initialDesignId, onDesignCreated, embedded = fal
   // mode there is no /design/:id URL, so the persisted answer is authoritative.
   const currentDesignId = initialDesignId || designId;
   const canvasState = useCanvasState();
-  const designState = useDesigns(canvasState.getCanvasJSONForPage);
+  const designState = useDesigns(canvasState.getCanvasJSONForPage, { examId, questionId });
   const [fontWarning, setFontWarning] = useState("");
   const designCreationStartedRef = useRef(false);
   const onDesignCreatedRef = useRef(onDesignCreated);

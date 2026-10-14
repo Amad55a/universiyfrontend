@@ -2,7 +2,11 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import type { Design, DesignWithPages, Template, Page } from "../types";
 import { api } from "../api";
 
-export function useDesigns(getCanvasJSONForPage: (pageId: string) => string) {
+export function useDesigns(
+  getCanvasJSONForPage: (pageId: string) => string,
+  examContext: { examId?: string; questionId?: string } = {},
+) {
+  const { examId, questionId } = examContext;
   const [designs, setDesigns] = useState<Design[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [activeDesign, setActiveDesign] = useState<Design | null>(null);
@@ -87,6 +91,7 @@ export function useDesigns(getCanvasJSONForPage: (pageId: string) => string) {
       const d = await api<Design>("POST", "/api/designs", {
         name: "Untitled Design",
         canvas_json: "{}",
+        ...(examId && questionId ? { examId, questionId } : {}),
       });
       setDesigns((prev) => [d, ...prev]);
       setActiveDesign(d);
@@ -99,7 +104,7 @@ export function useDesigns(getCanvasJSONForPage: (pageId: string) => string) {
       console.error("Failed to create design:", e);
       setError(e instanceof Error ? e.message : "Could not create a design.");
     }
-  }, []);
+  }, [examId, questionId]);
 
   const createFromTemplate = useCallback(async (template: Template): Promise<string | undefined> => {
     try {
@@ -108,13 +113,14 @@ export function useDesigns(getCanvasJSONForPage: (pageId: string) => string) {
         canvas_json: template.canvas_json,
         width: template.width,
         height: template.height,
+        ...(examId && questionId ? { examId, questionId } : {}),
       });
       setDesigns((prev) => [d, ...prev]);
       return d.id;
     } catch (e) {
       console.error("Failed to create from template:", e);
     }
-  }, []);
+  }, [examId, questionId]);
 
   const loadDesign = useCallback(
     async (id: string) => {

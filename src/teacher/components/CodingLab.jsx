@@ -316,12 +316,22 @@ function ExecutionPanel({ code, langId, questionId, examId, sqlSchema, questionD
   const setResult = (value) => setOutputState((current) => ({ ...current, result: value }));
   const setStorageWarning = (value) => setOutputState((current) => ({ ...current, storageWarning: value }));
   const [running, setRunning] = useState(false);
+  const runningRef = useRef(false);
   const [stdin, setStdin]   = useState("");
   const [showStdin, setShowStdin] = useState(false);
+  const executionIdRef = useRef(0);
+
+  useEffect(() => () => {
+    executionIdRef.current += 1;
+    runningRef.current = false;
+  }, []);
 
   const runCode = async (overrideCode) => {
-    if (running) return;
+    if (runningRef.current) return;
+    const executionId = ++executionIdRef.current;
+    runningRef.current = true;
     setRunning(true);
+    setResult(null);
     try {
       const source = typeof overrideCode === "string" ? overrideCode : code;
       const payload = { code: source, language: langId };
@@ -337,12 +347,18 @@ function ExecutionPanel({ code, langId, questionId, examId, sqlSchema, questionD
         ? `/api/exams/student/${examId}/questions/${questionId}/run`
         : "/api/labs/code/run";
       const res = await axios.post(endpoint, payload);
-      const data = res.data?.data;
-      if (!data || typeof data !== "object") {
+      const responseData = res.data?.data;
+      if (!responseData || typeof responseData !== "object") {
         throw new Error("The execution service returned an invalid response.");
       }
-      if (typeof data.stdout !== "string") data.stdout = data.output ?? "";
-      if (typeof data.stderr !== "string") data.stderr = "";
+      const data = {
+        ...responseData,
+        stdout: typeof responseData.stdout === "string"
+          ? responseData.stdout
+          : responseData.output ?? "",
+        stderr: typeof responseData.stderr === "string" ? responseData.stderr : "",
+      };
+      if (executionId !== executionIdRef.current) return;
       setResult(data);
       if (resultKey) {
         try {
@@ -358,9 +374,12 @@ function ExecutionPanel({ code, langId, questionId, examId, sqlSchema, questionD
         serviceError: true,
         message: err.response?.data?.message || err.message || "The execution service is unavailable.",
       };
-      setResult(data);
+      if (executionId === executionIdRef.current) setResult(data);
     } finally {
-      setRunning(false);
+      if (executionId === executionIdRef.current) {
+        runningRef.current = false;
+        setRunning(false);
+      }
     }
   };
 
@@ -488,6 +507,11 @@ function ExecutionPanel({ code, langId, questionId, examId, sqlSchema, questionD
       {/* Output area */}
       <div style={{ flex: 1, overflow: "auto", padding: "0.5rem", position: "relative" }}>
         {storageWarning && <p role="status" style={{ color: "#d29922", fontSize: 11 }}>{storageWarning}</p>}
+        {running && (
+          <p role="status" style={{ color: "#79c0ff", fontSize: 12, padding: "0.5rem", margin: 0 }}>
+            Running the current editor source…
+          </p>
+        )}
         {result?.serviceError && (
           <p role="alert" style={{ color: "#f85149", fontSize: 12, whiteSpace: "pre-wrap" }}>
             Execution failed: {result.message}
@@ -496,6 +520,11 @@ function ExecutionPanel({ code, langId, questionId, examId, sqlSchema, questionD
         {result?.timedOut && (
           <p role="alert" style={{ color: "#d29922", fontSize: 12 }}>
             Execution timed out. The runner stopped the program.
+          </p>
+        )}
+        {result && !result.serviceError && !isSql && result.executionStatus && (
+          <p role="status" style={{ color: result.ok ? "#3fb950" : "#f85149", fontSize: 10, padding: "0 0.5rem", margin: "0.25rem 0" }}>
+            Execution {result.executionStatus}
           </p>
         )}
         {result && !result.serviceError && !isSql && (
@@ -561,9 +590,20 @@ function ExecutionPanel({ code, langId, questionId, examId, sqlSchema, questionD
 // ─── STUDENT: CODING LAB (main component) ────────────────────────────────────
 export function StudentCodingLab({ question, value, onSave, examId }) {
   const allowedLangs = (question.allowedLanguages || []).filter(id => !["tailwind", "react"].includes(id));
-  const initialLang = value?.langId || allowedLangs[0] || "python";
+  const preferredLang = value?.langId || question.programmingLanguage;
+  const initialLang = allowedLangs.includes(preferredLang)
+    ? preferredLang
+    : allowedLangs[0] || "python";
   const [selectedLangId, setSelectedLangId] = useState(initialLang);
-  const [codes, setCodes] = useState(value?.codes || (value?.code ? { [initialLang]: value.code } : {}));
+  const [codes, setCodes] = useState(() => {
+    const savedCodes = value?.codes && typeof value.codes === "object"
+      ? value.codes
+      : {};
+    if (typeof value?.code === "string" && value.code.length > 0) {
+      return { ...savedCodes, [initialLang]: value.code };
+    }
+    return savedCodes;
+  });
   const [showPreview, setShowPreview] = useState(true);
   const [markers, setMarkers] = useState([]);
 
@@ -578,14 +618,18 @@ export function StudentCodingLab({ question, value, onSave, examId }) {
   const getCode = useCallback(
     (id) => {
       if (codes[id] !== undefined) return codes[id];
-      const teacherStarter = question.starterCode?.[id];
+      const teacherStarter = typeof question.starterCode === "string"
+        ? (allowedLangs.length === 1 && allowedLangs[0] === id
+          ? question.starterCode
+          : undefined)
+        : question.starterCode?.[id];
       if (teacherStarter !== undefined) {
         // Unescape HTML entities in case they were escaped in database/templates
         return unescapeHtml(teacherStarter);
       }
       return SUPPORTED_LANGUAGES.find(l => l.id === id)?.starter || "";
     },
-    [codes, question.starterCode]
+    [allowedLangs, codes, question.starterCode]
   );
 
   const code = getCode(selectedLangId);
