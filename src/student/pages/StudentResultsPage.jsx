@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import DesignSnapshotPreview from "../../components/DesignSnapshotPreview";
+import SubmittedCodeFiles from "../../components/SubmittedCodeFiles";
 import {
   Award, AlertCircle, FileText, CheckCircle2, ChevronRight, ArrowLeft,
   MessageSquare, Send, Sparkles, Loader2, Calendar, Shield, Play
@@ -181,6 +182,12 @@ export default function StudentResultsPage() {
             const qid = ans.questionId?.toString();
             const appeal = detail.appeals?.find((ap) => ap.questionId?.toString() === qid);
             const scoreSet = ans.finalScore !== undefined;
+            const studentAnswer = ans.studentAnswer;
+            const isCodeAnswer = ["lab", "programming", "labhtml", "html_css_js", "react_project"].includes(ans.questionType) ||
+              (studentAnswer && typeof studentAnswer === "object" &&
+                ["code", "codes", "files", "html", "css", "js", "javascript"].some((key) =>
+                  Object.hasOwn(studentAnswer, key)
+                ));
 
             return (
               <div key={qid} className="bg-white dark:bg-zinc-900 rounded-2xl border border-gray-200 dark:border-zinc-800 p-5 space-y-4">
@@ -217,10 +224,8 @@ export default function StudentResultsPage() {
                         <span className="italic text-gray-400">No terminal session was recorded.</span>
                       )}
                     </div>
-                  ) : ["lab", "programming"].includes(ans.questionType) || (typeof ans.studentAnswer === "object" && ans.studentAnswer?.code) ? (
-                    <pre className="p-4 bg-zinc-950 text-emerald-400 border border-zinc-800 rounded-xl font-mono text-xs overflow-auto max-h-60 leading-relaxed">
-                      {typeof ans.studentAnswer === "object" ? ans.studentAnswer.code || JSON.stringify(ans.studentAnswer, null, 2) : String(ans.studentAnswer || "")}
-                    </pre>
+                  ) : isCodeAnswer ? (
+                    <SubmittedCodeFiles answer={studentAnswer} answerType={ans.questionType} />
                   ) : (
                     <div className="p-3 bg-gray-50 dark:bg-zinc-800/40 border border-gray-150 dark:border-zinc-800 rounded-xl font-mono text-sm text-gray-800 dark:text-gray-200 max-h-36 overflow-auto">
                       {ans.studentAnswer !== undefined && ans.studentAnswer !== ""
