@@ -22,7 +22,7 @@ const HeroStats = ({ user, resolvedClassLabel, streak, dailyGoal, completedToday
         </div>
         <div className="min-w-0">
           <p className="text-sm font-black text-gray-900 dark:text-white truncate">{user?.name || fallbackName || "Student"}</p>
-          <p className="text-[11px] text-gray-400 truncate">{resolvedClassLabel}</p>
+          <p className="text-[11px] text-gray-400 truncate">UniCORE Student</p>
         </div>
       </div>
 

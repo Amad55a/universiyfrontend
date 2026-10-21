@@ -167,13 +167,14 @@ const AdminHeader = ({ onMenuClick, pageTitle, breadcrumbs = [] }) => {
                     </p>
                     <p className="text-[10px] text-gray-500 truncate">{user?.email}</p>
                   </div>
-                  <button
-                    type="button"
-                    className="flex w-full items-center gap-2 px-4 py-2.5 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-[#2C2DE0]/10 hover:text-[#2C2DE0] transition-colors text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150 group"
+                  <Link
+                    to="/admin/settings"
+                    className="flex w-full items-center gap-2 px-4 py-2.5 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-[#2C2DE0]/10 hover:text-[#2C2DE0] transition-colors"
+                    onClick={() => setProfileOpen(false)}
                   >
                     <User size={14} />
                     {ap.header.viewProfile}
-                  </button>
+                  </Link>
                   <button
                     type="button"
                     onClick={() => logout()}

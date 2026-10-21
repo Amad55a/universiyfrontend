@@ -31,6 +31,23 @@ const fmt = (d, lang = "en") =>
 
 const OPEN = 7;
 const CLOSE = 17;
+const SLOT_MINUTES = 30;
+
+const ALL_SLOTS = (() => {
+  const s = [];
+  for (let h = OPEN; h < CLOSE; h++) {
+    s.push(`${String(h).padStart(2, "0")}:00`);
+    s.push(`${String(h).padStart(2, "0")}:30`);
+  }
+  return s;
+})();
+
+const formatSlot = (slot) => {
+  const [h, m] = slot.split(":").map(Number);
+  const period = h < 12 ? "AM" : "PM";
+  const hour = h % 12 || 12;
+  return `${hour}:${String(m).padStart(2, "0")} ${period}`;
+};
 
 const getAvailableSlots = (bookedSlots) => {
   const sorted = [...bookedSlots].sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
@@ -339,9 +356,16 @@ const SeatsGrid = () => {
 
   // 1. All standard React state hooks first
   const [selectedSeat, setSelectedSeat] = useState(null);
+  const [initialSlot, setInitialSlot] = useState(null);
   const [filter, setFilter] = useState("all");
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const d = new Date();
+    return d.toISOString().split("T")[0];
+  });
+  const [filterTime, setFilterTime] = useState("");
+  const [filterDuration, setFilterDuration] = useState(1);
 
   // 2. React Query data hooks second
   const { data: seats = [], isLoading: seatsLoading, refetch, isFetching } =
@@ -403,19 +427,39 @@ const SeatsGrid = () => {
     return seats;
   }, [seats]);
 
-  const isReservedNow = (seat) => seat.isReserved === true || seat.upcomingSlots?.some((s) => s.status === "active");
-  const isFullyBookedToday = (seat) => {
-    if (isReservedNow(seat)) return true;
+  const todayStr = new Date().toISOString().split("T")[0];
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowStr = tomorrow.toISOString().split("T")[0];
+
+  const parseSlotMins = (slot) => {
+    const [h, m] = slot.split(":").map(Number);
+    return h * 60 + m;
+  };
+
+  const isSeatUnavailable = (seat) => {
     const bookings = bookingsBySeatId[String(seat._id)] || [];
-    return bookings.length > 0 && getAvailableSlots(bookings).length === 0;
+    if (!filterTime) {
+      // No time filter: seat is "unavailable" if fully booked all day
+      return bookings.length > 0 && getAvailableSlots(bookings).length === 0;
+    }
+    // Time filter: check if any booking overlaps the selected window
+    const startMins = parseSlotMins(filterTime);
+    const endMins = startMins + filterDuration * 30;
+    return bookings.some((b) => {
+      const bStart = new Date(b.startTime);
+      const bEnd = new Date(b.endTime);
+      const bStartMins = bStart.getHours() * 60 + bStart.getMinutes();
+      const bEndMins = bEnd.getHours() * 60 + bEnd.getMinutes();
+      return bStartMins < endMins && bEndMins > startMins;
+    });
   };
 
   const filteredSeats = useMemo(() => {
-    if (filter === "available") return seats.filter((s) => !isFullyBookedToday(s));
-    if (filter === "reserved") return seats.filter(isFullyBookedToday);
+    if (filter === "available") return seats.filter((s) => !isSeatUnavailable(s));
+    if (filter === "reserved") return seats.filter(isSeatUnavailable);
     return seats;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seats, bookingsBySeatId, filter]);
+  }, [seats, bookingsBySeatId, filter, filterTime, filterDuration]);
 
   // Content-area skeleton only — sidebar and header stay visible via StudentLayout
   const showContentSkeleton = isApiLoading || loading;
@@ -429,8 +473,8 @@ const SeatsGrid = () => {
   }
 
   const totalSeats = seats.length;
-  const reservedCount = seats.filter(isFullyBookedToday).length;
-  const availableCount = totalSeats - reservedCount;
+  const reservedCount = seats.filter(isSeatUnavailable).length;
+  const availableCount = seats.filter((s) => !isSeatUnavailable(s)).length;
 
   const handleFilterChange = (f) => { setFilter(f); setPage(1); };
   const handleRefetch = () => { refetch(); refetchReservations(); };
@@ -494,6 +538,65 @@ const SeatsGrid = () => {
         <p className="text-xs text-pink-600 dark:text-pink-400 font-medium leading-relaxed">{seatsText.girlsOnlyHint}</p>
       </div>
 
+      {/* Time filter */}
+      <div className="bg-white dark:bg-gray-950 border border-gray-100 dark:border-gray-800 rounded-2xl px-5 py-4 mb-5">
+        <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-3">Find available seats</p>
+        <div className="flex flex-wrap gap-3 items-end">
+          <div>
+            <label className="text-[10px] font-bold text-gray-400 block mb-1">Date</label>
+            <input
+              type="date"
+              value={selectedDate}
+              min={todayStr}
+              max={tomorrowStr}
+              onChange={(e) => {
+                setSelectedDate(e.target.value);
+                setPage(1);
+              }}
+              className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-semibold text-gray-800 dark:text-gray-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#2C2DE0]"
+            />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-gray-400 block mb-1">Start time (optional)</label>
+            <select
+              value={filterTime}
+              onChange={(e) => {
+                setFilterTime(e.target.value);
+                setPage(1);
+              }}
+              className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-semibold text-gray-800 dark:text-gray-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#2C2DE0]"
+            >
+              <option value="">Any time</option>
+              {ALL_SLOTS.map((s) => <option key={s} value={s}>{formatSlot(s)}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-gray-400 block mb-1">Duration</label>
+            <div className="flex gap-1">
+              {[{label:'30m',val:1},{label:'1h',val:2},{label:'1.5h',val:3},{label:'2h',val:4}].map(d => (
+                <button
+                  key={d.val}
+                  type="button"
+                  onClick={() => {
+                    setFilterDuration(d.val);
+                    setPage(1);
+                  }}
+                  className={`px-3 py-2 rounded-xl text-xs font-bold border transition-all ${
+                    filterDuration === d.val
+                      ? 'bg-[#2C2DE0] border-[#2C2DE0] text-white'
+                      : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-900 hover:border-[#2C2DE0]'
+                  }`}>{d.label}</button>
+              ))}
+            </div>
+          </div>
+        </div>
+        {filterTime && (
+          <p className="text-xs text-[#2C2DE0] font-semibold mt-2">
+            Showing seats available at {formatSlot(filterTime)} for {filterDuration * 30} min
+          </p>
+        )}
+      </div>
+
       {/* Stats */}
       <div className="grid grid-cols-3 gap-3 mb-6">
         <StatCard label={seatsText.totalSeats} value={totalSeats} loading={loading} variant="default" />
@@ -535,7 +638,7 @@ const SeatsGrid = () => {
                     <SeatCard
                       key={seat._id}
                       seat={seat}
-                      isFullyBooked={isFullyBookedToday(seat)}
+                      isFullyBooked={isSeatUnavailable(seat)}
                       lockedUnverified={needsVerification}
                       lockedGirlsOnly={lockedGirlsOnly}
                       now={now}
@@ -543,7 +646,12 @@ const SeatsGrid = () => {
                         if (!bookingOpen) { toast.error(seatsText.bookingClosed); return; }
                         if (needsVerification) { toast.error(verifyCopy.reservationBlocked); return; }
                         if (lockedGirlsOnly) { toast.error(seatsText.girlsOnlyBlocked); return; }
-                        if (!isFullyBookedToday(seat)) setSelectedSeat(seat);
+                        if (!isSeatUnavailable(seat)) {
+                          setSelectedSeat(seat);
+                          if (filterTime) {
+                            setInitialSlot(filterTime);
+                          }
+                        }
                       }}
                       t={seatsText}
                       verifyCopy={verifyCopy}
@@ -564,7 +672,8 @@ const SeatsGrid = () => {
       {selectedSeat && bookingOpen && (
         <ReservationModal
           seat={selectedSeat}
-          onClose={() => { setSelectedSeat(null); refetch(); refetchReservations(); }}
+          initialSlot={initialSlot}
+          onClose={() => { setSelectedSeat(null); setInitialSlot(null); refetch(); refetchReservations(); }}
         />
       )}
     </section>

@@ -11,7 +11,7 @@ import NotificationWelcomeModal from "@/components/NotificationWelcomeModal";
 import StudentExamList from "./StudentExamList";
 
 function useDashboardData() {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ["dashboard", "stats"],
     queryFn: getDashboardStats,
     staleTime: 30_000,
@@ -19,6 +19,7 @@ function useDashboardData() {
 
   return {
     loading: isLoading,
+    error: isError,
     streak: data?.streak ?? 0,
     dailyGoal: data?.dailyGoal ?? 3,
     completedToday: data?.completedToday ?? 0,
@@ -55,6 +56,11 @@ const DashboardPage = () => {
     <>
       <NotificationWelcomeModal />
       <div className="w-full px-4 sm:px-6 lg:px-8 py-6 sm:py-8 flex flex-col gap-6">
+        {data.error && !data.loading && (
+          <div className="rounded-2xl bg-red-50 dark:bg-red-500/10 border border-red-100 dark:border-red-500/20 px-5 py-4">
+            <p className="text-sm font-semibold text-red-600 dark:text-red-400">Could not load dashboard stats. Please refresh to try again.</p>
+          </div>
+        )}
         {data.loading ? (
           <>
             <SkeletonBlock className="h-48" />
