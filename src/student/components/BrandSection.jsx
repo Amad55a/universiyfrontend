@@ -21,7 +21,7 @@ const SLIDES = (t) => [
     title: t.dashboard.slides[1].title,
     desc: t.dashboard.slides[1].desc,
     cta: t.dashboard.slides[1].cta,
-    href: "/library",
+    href: "/e-library",
     accent: "#2C2DE0",
     bg: "from-gray-50 to-white dark:from-gray-900 dark:to-black",
     animation: "library",

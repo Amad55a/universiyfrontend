@@ -42,7 +42,7 @@ const HeroWelcome = ({
   const { t, locale } = useLanguage();
   const firstName = user?.name?.split(" ")[0] || t?.hero?.fallbackName || "there";
   const isGuest = user?.role === "guest";
-  const resolvedClassLabel = classLabel || t?.hero?.classLabel || "Computer Science · Semester 5";
+  const resolvedClassLabel = "UniCORE Student";
 
   const reducedMotion = useReducedMotion();
   const pageVisible = usePageVisible();
