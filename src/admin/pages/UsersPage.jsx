@@ -35,6 +35,12 @@ const emptyForm = {
   universityVerified: false,
 };
 
+const getUniversityVerification = (user) => {
+  if (user?.isUniversityVerified === true || user?.universityVerified === true) return true;
+  if (user?.isUniversityVerified === false || user?.universityVerified === false) return false;
+  return null;
+};
+
 const UsersPage = () => {
   const { t } = useLanguage();
   const ap = t.adminPanel;
@@ -64,7 +70,7 @@ const UsersPage = () => {
     [page, limit, search, filters, sort]
   );
 
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["admin-users", queryParams],
     queryFn: async () => {
       const res = await fetchAdminUsers(queryParams);
@@ -101,6 +107,9 @@ const UsersPage = () => {
     const payload = { ...form };
     delete payload.confirmPassword;
     if (!payload.password) delete payload.password;
+    if (editingUser && getUniversityVerification(editingUser) === null) {
+      delete payload.universityVerified;
+    }
 
     if (editingUser) updateMutation.mutate({ id: editingUser.id, payload });
     else createMutation.mutate(payload);
@@ -210,7 +219,7 @@ const UsersPage = () => {
       role: user.role || "student",
       accountStatus: user.accountStatus || "active",
       emailVerified: Boolean(user.emailVerified),
-      universityVerified: Boolean(user.universityVerified),
+      universityVerified: getUniversityVerification(user) === true,
     });
     setFormErrors({});
   };
@@ -242,7 +251,7 @@ const UsersPage = () => {
     },
     { key: "fullName", label: p.fullName, sortable: true },
     { key: "email", label: p.email, sortable: true },
-    { key: "studentId", label: p.studentId, sortable: true, render: (row) => row.studentId || p.notAvailable },
+    { key: "universityId", label: p.studentId, sortable: true, render: (row) => row.universityId || p.notAvailable },
     {
       key: "role",
       label: p.role,
@@ -257,7 +266,15 @@ const UsersPage = () => {
     {
       key: "universityVerified",
       label: p.universityVerification,
-      render: (row) => <StatusBadge label={row.universityVerified ? p.verified : p.notVerified} tone={row.universityVerified ? "green" : "orange"} />,
+      render: (row) => {
+        const verified = getUniversityVerification(row);
+        return (
+          <StatusBadge
+            label={verified === true ? p.verified : verified === false ? p.notVerified : p.verificationRequired}
+            tone={verified === true ? "green" : verified === false ? "orange" : "yellow"}
+          />
+        );
+      },
     },
     {
       key: "accountStatus",
@@ -284,7 +301,7 @@ const UsersPage = () => {
     const values = rows.map((row) => [
       row.fullName || "",
       row.email || "",
-      row.studentId || "",
+      row.universityId || "",
       roleLabels[row.role] || row.role || "",
       row.emailVerified ? p.verified : p.notVerified,
       row.universityVerified ? p.verified : p.notVerified,
@@ -314,13 +331,22 @@ const UsersPage = () => {
   return (
     <PageTransition>
       <PageHeader title={p.title} subtitle={p.subtitle} />
-      {isError && <p className="mb-4 text-sm text-red-500">{ap.toast.error}</p>}
+      {isError && (
+        <div role="alert" className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300">
+          <span>{ap.toast.error}</span>
+          <button type="button" onClick={() => refetch()} className="shrink-0 font-semibold underline underline-offset-2">
+            {p.retry}
+          </button>
+        </div>
+      )}
 
       <DataTable
         columns={columns}
         data={rows}
         loading={isLoading}
         searchPlaceholder={p.searchPlaceholder}
+        searchClassName="sm:max-w-none sm:min-w-[260px] sm:flex-1"
+        searchDebounceMs={300}
         emptyTitle={p.emptyTitle}
         emptyDescription={p.emptyDescription}
         onAdd={openCreate}
@@ -332,7 +358,7 @@ const UsersPage = () => {
           setSort(nextSort);
           setPage(1);
         }}
-        extraFilters={
+        toolbarFilters={
           <>
             <FilterDropdown label={p.role} options={roleOptions} value={filters.role} onChange={(value) => updateFilter("role", value)} />
             <FilterDropdown label={p.accountStatus} options={statusOptions} value={filters.accountStatus} onChange={(value) => updateFilter("accountStatus", value)} />
@@ -482,7 +508,10 @@ const UsersPage = () => {
             </label>
             <label className="flex items-center justify-between gap-3 text-xs font-semibold text-gray-600 dark:text-gray-300">
               {p.universityVerification}
-              <input type="checkbox" checked={form.universityVerified} onChange={(event) => setForm((current) => ({ ...current, universityVerified: event.target.checked }))} className="rounded border-gray-300 text-[#2C2DE0] focus:ring-[#2C2DE0]/30" />
+              <input type="checkbox" checked={form.universityVerified} disabled={Boolean(editingUser && getUniversityVerification(editingUser) === null)} onChange={(event) => setForm((current) => ({ ...current, universityVerified: event.target.checked }))} className="rounded border-gray-300 text-[#2C2DE0] focus:ring-[#2C2DE0]/30 disabled:cursor-not-allowed disabled:opacity-60" />
+              {editingUser && getUniversityVerification(editingUser) === null && (
+                <span className="text-[11px] text-amber-600">{p.verificationRequired}</span>
+              )}
             </label>
           </div>
         </div>

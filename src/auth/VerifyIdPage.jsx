@@ -213,7 +213,7 @@ const VerifyUniversityId = () => {
   if (loading || !user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white dark:bg-black">
-        <Loader2 className="w-8 h-8 animate-spin text-[#2C2DE0] dark:text-[#4F51FF]" />
+        <Loader2 className="w-8 h-8 animate-spin text-[#2C2DE0] dark:text-[#8E90FF]" />
       </div>
     );
   }
@@ -237,8 +237,9 @@ const VerifyUniversityId = () => {
           {/* ── SUCCESS ─────────────────────────────────────────────────── */}
           {step === "success" && (
             <div className="flex flex-col items-center text-center py-8 anim-fadeup">
-              <div className="w-20 h-20 rounded-2xl bg-[#2C2DE0]/5 dark:bg-[#4F51FF]/10 dark:bg-[#2C2DE0] dark:bg-[#1E1FAA]/10 flex items-center justify-center mb-5 anim-scalein">
-                <CheckCircle2 size={40} className="text-[#2C2DE0] dark:text-[#4F51FF]" />
+              {/* FIX: removed stacked conflicting dark:bg-* classes */}
+              <div className="w-20 h-20 rounded-2xl bg-[#2C2DE0]/10 dark:bg-[#4F51FF]/20 flex items-center justify-center mb-5 anim-scalein">
+                <CheckCircle2 size={40} className="text-[#2C2DE0] dark:text-[#8E90FF]" />
               </div>
               <h1 className="text-xl font-black text-gray-900 dark:text-white">
                 {copy.successTitle}
@@ -253,7 +254,7 @@ const VerifyUniversityId = () => {
               )}
               {/* Progress bar */}
               <div className="mt-8 w-full h-1 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
-                <div className="h-full bg-[#2C2DE0] dark:bg-[#1E1FAA] rounded-full anim-progress" />
+                <div className="h-full bg-[#2C2DE0] dark:bg-[#4F51FF] rounded-full anim-progress" />
               </div>
             </div>
           )}
@@ -262,9 +263,9 @@ const VerifyUniversityId = () => {
           {isChecking && (
             <div className="flex flex-col items-center text-center py-12 anim-fadeup">
               <div className="relative w-16 h-16 mb-6">
-                <div className="absolute inset-0 rounded-full border-4 border-[#2C2DE0] dark:border-[#2C2DE0]" />
+                <div className="absolute inset-0 rounded-full border-4 border-[#2C2DE0]/20 dark:border-[#4F51FF]/30" />
                 <div className="absolute inset-0 rounded-full border-4 border-[#2C2DE0] dark:border-[#4F51FF] border-t-transparent animate-spin" />
-                <GraduationCap size={22} className="absolute inset-0 m-auto text-[#2C2DE0] dark:text-[#4F51FF]" />
+                <GraduationCap size={22} className="absolute inset-0 m-auto text-[#2C2DE0] dark:text-[#8E90FF]" />
               </div>
               <p className="text-base font-bold text-gray-900 dark:text-white min-h-6 anim-textswap">
                 {loadingText}
@@ -273,7 +274,7 @@ const VerifyUniversityId = () => {
                 {[0, 1, 2].map(i => (
                   <span
                     key={i}
-                    className="w-2 h-2 rounded-full bg-[#2C2DE0] dark:bg-[#1E1FAA] animate-bounce"
+                    className="w-2 h-2 rounded-full bg-[#2C2DE0] dark:bg-[#4F51FF] animate-bounce"
                     style={{ animationDelay: `${i * 150}ms` }}
                   />
                 ))}
@@ -352,9 +353,10 @@ const VerifyUniversityId = () => {
                 )}
               </form>
 
+              {/* FIX: cleaned mixed-up light/dark text + hover classes */}
               <Link
                 to="/dashboard"
-                className="mt-6 block text-center text-xs text-gray-500 dark:text-gray-400 hover:text-[#1E1FAA] dark:text-[#4F51FF] dark:hover:text-[#4F51FF] font-semibold transition-colors"
+                className="mt-6 block text-center text-xs text-gray-500 dark:text-gray-400 hover:text-[#2C2DE0] dark:hover:text-[#8E90FF] font-semibold transition-colors"
               >
                 {t.navbar?.dashboard} →
               </Link>
@@ -368,7 +370,7 @@ const VerifyUniversityId = () => {
               <button
                 type="button"
                 onClick={() => { setStep("idle"); setErrorMsg(""); setFullName(""); setPassword(""); setAccountType(null); }}
-                className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-[#2C2DE0] dark:text-[#4F51FF] font-semibold mb-6 transition-colors"
+                className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-[#2C2DE0] dark:hover:text-[#8E90FF] font-semibold mb-6 transition-colors"
               >
                 <ArrowLeft size={13} />
                 {copy.back}
@@ -381,13 +383,13 @@ const VerifyUniversityId = () => {
                 {copy.confirmSubtitle}
               </p>
 
-              {/* ID badge */}
-              <div className="mt-5 flex items-center gap-2.5 bg-[#2C2DE0]/5 dark:bg-[#4F51FF]/10 dark:bg-[#2C2DE0] dark:bg-[#1E1FAA]/10 border border-[#2C2DE0] dark:border-[#2C2DE0] dark:border-[#4F51FF]/30 rounded-xl px-4 py-2.5">
-                <BadgeCheck size={15} className="text-[#2C2DE0] dark:text-[#4F51FF] shrink-0" />
-                <span className="text-xs font-mono font-bold tracking-widest text-[#0F0F55] dark:text-blue-300 dark:text-[#4F51FF]">
+              {/* ID badge — FIX: clean background/border, readable text in both modes */}
+              <div className="mt-5 flex items-center gap-2.5 bg-[#2C2DE0]/5 dark:bg-[#4F51FF]/10 border border-[#2C2DE0]/30 dark:border-[#4F51FF]/40 rounded-xl px-4 py-2.5">
+                <BadgeCheck size={15} className="text-[#2C2DE0] dark:text-[#8E90FF] shrink-0" />
+                <span className="text-xs font-mono font-bold tracking-widest text-[#0F0F55] dark:text-white">
                   {universityId}
                 </span>
-                <span className="ml-auto text-[10px] font-bold uppercase tracking-widest text-[#2C2DE0] dark:text-[#4F51FF]">
+                <span className="ml-auto text-[10px] font-bold uppercase tracking-widest text-[#2C2DE0] dark:text-[#8E90FF]">
                   {copy.idFoundBadge}
                 </span>
               </div>
@@ -459,7 +461,7 @@ const VerifyUniversityId = () => {
                     <button
                       type="button"
                       onClick={() => setShowPassword(v => !v)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-gray-400 hover:text-[#2C2DE0] dark:text-[#4F51FF] transition-colors"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-gray-400 hover:text-[#2C2DE0] dark:hover:text-[#8E90FF] transition-colors"
                     >
                       {showPassword ? copy.hide : copy.show}
                     </button>
@@ -548,9 +550,9 @@ const VerifyUniversityId = () => {
             })}
           </div>
 
-          {/* Security badge */}
+          {/* Security badge — FIX: icon was blue on black, now lighter blue */}
           <div className="flex items-start gap-3 bg-gray-900 border border-gray-800 rounded-xl p-4">
-            <ShieldCheck size={15} className="text-[#2C2DE0] dark:text-[#4F51FF] shrink-0 mt-0.5" />
+            <ShieldCheck size={15} className="text-[#8E90FF] shrink-0 mt-0.5" />
             <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">{copy.securityNote}</p>
           </div>
         </div>

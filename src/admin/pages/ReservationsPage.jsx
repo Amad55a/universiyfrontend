@@ -1,6 +1,6 @@
 import { toast } from "sonner";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { createElement, useMemo, useState } from "react";
 import {
   CheckCheck, Ban, UserX, Eye, Clock, MapPin,
   User, Armchair, CalendarDays, Activity,
@@ -19,11 +19,13 @@ import {
   fetchSeatReservations,
   fetchSeatReservationStats,
   fetchSeatReservation,
+  unwrapSeatReservationDetail,
   adminCancelSeatReservation,
   adminForceCompleteSeatReservation,
   adminMarkNoShow,
   bulkUpdateSeatReservations,
 } from "@/api/admin";
+import { SOMALIA_TIME_ZONE } from "@/utils/time";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const STATUS_TONE = {
@@ -43,10 +45,10 @@ const STATUS_DOT = {
 };
 
 const fmtTime = (d) =>
-  d ? new Date(d).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true }) : "—";
+  d ? new Date(d).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: SOMALIA_TIME_ZONE }) : "—";
 
 const fmtDate = (d) =>
-  d ? new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—";
+  d ? new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: SOMALIA_TIME_ZONE }) : "—";
 
 const fmtDateTime = (d) => (d ? `${fmtDate(d)}, ${fmtTime(d)}` : "—");
 
@@ -54,7 +56,7 @@ const fmtDateTime = (d) => (d ? `${fmtDate(d)}, ${fmtTime(d)}` : "—");
 const StatCard = ({ label, value, color, icon: Icon, pulse, sub }) => (
   <div className="flex items-center gap-3 rounded-2xl border border-gray-200/70 bg-white/60 p-4 backdrop-blur-sm dark:border-white/10 dark:bg-white/[0.04]">
     <div className={`relative flex size-10 shrink-0 items-center justify-center rounded-xl ${color}`}>
-      <Icon size={18} className="text-white" />
+      {createElement(Icon, { size: 18, className: "text-white" })}
       {pulse && (
         <span className="absolute -right-0.5 -top-0.5 size-2.5 animate-pulse rounded-full bg-[#2C2DE0] ring-2 ring-white dark:ring-gray-900" />
       )}
@@ -71,7 +73,7 @@ const StatCard = ({ label, value, color, icon: Icon, pulse, sub }) => (
 const DetailRow = ({ icon: Icon, label, value, mono }) => (
   <div className="flex items-start gap-3">
     <div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-gray-100 dark:bg-white/10">
-      <Icon size={13} className="text-gray-500 dark:text-gray-400" />
+      {createElement(Icon, { size: 13, className: "text-gray-500 dark:text-gray-400" })}
     </div>
     <div className="min-w-0">
       <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500">{label}</p>
@@ -158,9 +160,11 @@ const SeatReservationsPage = () => {
     refetchInterval: 30_000,
   });
 
-  const { data: detailData, isLoading: detailLoading } = useQuery({
+  const { data: detailData, isLoading: detailLoading, isError: detailError, isFetching: detailFetching, refetch: retryDetail } = useQuery({
     queryKey: ["admin-seat-reservation-detail", viewingId],
-    queryFn: async () => (await fetchSeatReservation(viewingId)).data.data.reservation,
+    queryFn: async () => {
+      return unwrapSeatReservationDetail(await fetchSeatReservation(viewingId));
+    },
     enabled: Boolean(viewingId),
   });
 
@@ -208,7 +212,7 @@ const SeatReservationsPage = () => {
     onError: (e) => toast.error(e?.response?.data?.message || t?.adminPanel?.toast?.error),
   });
 
-  const rows = data?.data ?? [];
+  const rows = useMemo(() => data?.data ?? [], [data?.data]);
 
   const seatConflicts = useMemo(() => {
     if (!detailData || !["pending", "active"].includes(detailData.status)) return [];
@@ -242,6 +246,14 @@ const SeatReservationsPage = () => {
   };
 
   const updateFilter = (key, value) => { setFilters((f) => ({ ...f, [key]: value })); setPage(1); };
+  const openDetails = (row) => {
+    const reservationId = row?._id || row?.id;
+    if (!reservationId) {
+      toast.error(t?.adminPanel?.toast?.error);
+      return;
+    }
+    setViewingId(String(reservationId));
+  };
 
   const statusLabels = {
     pending: p.statusPending,
@@ -292,15 +304,15 @@ const SeatReservationsPage = () => {
     const steps = [
       { label: p.timelineCreated, time: fmtDateTime(r.createdAt), done: true, active: false },
       { label: p.timelinePending, time: fmtTime(r.startTime), done: after("pending"), active: r.status === "pending" },
-      { label: p.timelineActive, time: "", done: after("active"), active: r.status === "active" },
-      { label: p.timelineCompleted, time: fmtTime(r.endTime), done: r.status === "completed", active: false },
+      { label: p.timelineActive, time: fmtDateTime(r.checkedInAt), done: after("active"), active: r.status === "active" },
+      { label: p.timelineCompleted, time: fmtDateTime(r.checkedOutAt || (r.status === "completed" ? r.endTime : null)), done: r.status === "completed", active: false },
     ];
 
     if (r.status === "cancelled") {
-      steps.push({ label: p.statusCancelled, time: fmtDateTime(r.updatedAt), done: true, active: false });
+      steps.push({ label: p.statusCancelled, time: fmtDateTime(r.cancelledAt || r.updatedAt), done: true, active: false });
     }
     if (r.status === "no_show") {
-      steps.push({ label: p.statusNoShow, time: fmtDateTime(r.updatedAt), done: true, active: false });
+      steps.push({ label: p.statusNoShow, time: fmtDateTime(r.cancelledAt || r.updatedAt), done: true, active: false });
     }
 
     return steps;
@@ -313,16 +325,19 @@ const SeatReservationsPage = () => {
       render: (row) => (
         <div className="flex items-center gap-2.5">
           <div className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#2C2DE0]/10 text-[10px] font-black text-[#2C2DE0] ring-1 ring-[#2C2DE0]/20 dark:text-[#2C2DE0]">
-            {row.user?.avatar
-              ? <img src={row.user.avatar} alt="" className="size-full object-cover" />
+            {row.user?.photo || row.user?.avatar
+              ? <img src={row.user.photo || row.user.avatar} alt="" className="size-full object-cover" />
               : (row.user?.fullName || "?").slice(0, 2).toUpperCase()}
           </div>
           <div>
             <p className="text-xs font-bold text-gray-900 dark:text-white leading-tight">
-              {row.user?.fullName || "—"}
+              {row.user?.fullName || row.user?.name || p.detailNotProvided}
             </p>
-            <p className="text-[10px] text-gray-400 dark:text-gray-500 font-mono">
-              {row.user?.studentId || row.user?.email || ""}
+            <p className="text-[10px] text-gray-500 dark:text-gray-400">
+              {p.detailStudentId}: <span className="font-mono">{row.user?.universityId || p.detailNotProvided}</span>
+            </p>
+            <p className="text-[10px] text-gray-400 dark:text-gray-500 truncate max-w-52">
+              {row.user?.email || p.detailNotProvided}
             </p>
           </div>
         </div>
@@ -435,12 +450,12 @@ const SeatReservationsPage = () => {
         data={rows}
         loading={isLoading}
         // ── FIX 4: Updated search placeholder ─────────────────────────────
-        searchPlaceholder="Search student name or seat number…"
+        searchPlaceholder={p.searchPlaceholder}
         emptyTitle={p.emptyTitle}
         emptyDescription={p.emptyDescription}
         onSearchChange={(v) => { setSearch(v); setPage(1); }}
         onSortChange={(s) => { setSort(s); setPage(1); }}
-        onRowClick={(row) => setViewingId(row._id || row.id)}
+        onRowClick={openDetails}
         extraFilters={
           <>
             <FilterDropdown label={p.colStatus} options={statusOptions} value={filters.status} onChange={(v) => updateFilter("status", v)} />
@@ -466,7 +481,8 @@ const SeatReservationsPage = () => {
         renderRowActions={(row) => (
           <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
             <button
-              onClick={() => setViewingId(row._id || row.id)}
+              type="button"
+              onClick={(event) => { event.stopPropagation(); openDetails(row); }}
               className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-[10px] font-bold text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-white/10 transition-colors"
             >
               <Eye size={11} />
@@ -475,6 +491,7 @@ const SeatReservationsPage = () => {
 
             {row.status === "pending" && (
               <button
+                type="button"
                 onClick={() => setConfirmAction({ type: "cancel", id: row._id || row.id, label: p.actionCancel })}
                 className="flex items-center gap-1 rounded-lg bg-red-500/10 px-2 py-1.5 text-[10px] font-bold text-red-600 hover:bg-red-500/20 dark:hover:bg-red-500/20 transition-colors"
               >
@@ -486,12 +503,14 @@ const SeatReservationsPage = () => {
             {row.status === "active" && (
               <>
                 <button
+                  type="button"
                   onClick={() => setConfirmAction({ type: "forceComplete", id: row._id || row.id, label: p.actionForceComplete })}
                   className="flex items-center gap-1 rounded-lg bg-blue-500/10 px-2 py-1.5 text-[10px] font-bold text-blue-600 hover:bg-blue-500/20 transition-colors"
                 >
                   <CheckCheck size={11} />
                 </button>
                 <button
+                  type="button"
                   onClick={() => setConfirmAction({ type: "noShow", id: row._id || row.id, label: p.actionNoShow })}
                   className="flex items-center gap-1 rounded-lg bg-orange-500/10 px-2 py-1.5 text-[10px] font-bold text-orange-600 hover:bg-orange-500/20 transition-colors"
                 >
@@ -502,7 +521,8 @@ const SeatReservationsPage = () => {
 
             {["completed", "cancelled", "no_show"].includes(row.status) && (
               <button
-                onClick={() => setViewingId(row._id || row.id)}
+                type="button"
+                onClick={(event) => { event.stopPropagation(); openDetails(row); }}
                 className="rounded-lg px-2 py-1.5 text-[10px] font-bold text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
                 title={p.actionViewLogs}
               >
@@ -525,6 +545,7 @@ const SeatReservationsPage = () => {
             <div className="flex flex-wrap gap-2">
               {detailData?.status === "pending" && (
                 <button
+                  type="button"
                   onClick={() => { setViewingId(null); setConfirmAction({ type: "cancel", id: detailData._id, label: p.actionCancel }); }}
                   className="flex items-center gap-1.5 rounded-xl bg-red-500/10 px-3 py-2 text-xs font-bold text-red-600 hover:bg-red-500/20 transition-colors"
                 >
@@ -534,12 +555,14 @@ const SeatReservationsPage = () => {
               {detailData?.status === "active" && (
                 <>
                   <button
+                    type="button"
                     onClick={() => { setViewingId(null); setConfirmAction({ type: "forceComplete", id: detailData._id, label: p.actionForceComplete }); }}
                     className="flex items-center gap-1.5 rounded-xl bg-blue-500/10 px-3 py-2 text-xs font-bold text-blue-600 hover:bg-blue-500/20 transition-colors"
                   >
                     <CheckCheck size={13} /> {p.actionForceComplete}
                   </button>
                   <button
+                    type="button"
                     onClick={() => { setViewingId(null); setConfirmAction({ type: "noShow", id: detailData._id, label: p.actionNoShow }); }}
                     className="flex items-center gap-1.5 rounded-xl bg-orange-500/10 px-3 py-2 text-xs font-bold text-orange-600 hover:bg-orange-500/20 transition-colors"
                   >
@@ -549,6 +572,7 @@ const SeatReservationsPage = () => {
               )}
             </div>
             <button
+              type="button"
               onClick={() => setViewingId(null)}
               className="rounded-xl px-4 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-white/10 transition-colors"
             >
@@ -560,6 +584,18 @@ const SeatReservationsPage = () => {
         {detailLoading ? (
           <div className="flex items-center justify-center py-12">
             <div className="size-6 animate-spin rounded-full border-2 border-[#2C2DE0] border-t-transparent" />
+          </div>
+        ) : detailError ? (
+          <div role="alert" className="flex flex-col items-center gap-3 py-8 text-center">
+            <p className="text-sm text-red-600 dark:text-red-400">{ap.toast.error}</p>
+            <button
+              type="button"
+              onClick={() => retryDetail()}
+              disabled={detailFetching}
+              className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 disabled:opacity-50 dark:border-white/10 dark:text-gray-200 dark:hover:bg-white/10"
+            >
+              {p.retry}
+            </button>
           </div>
         ) : detailData ? (
           <div className="space-y-4">
@@ -574,9 +610,19 @@ const SeatReservationsPage = () => {
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-3 rounded-2xl border border-gray-200/70 bg-white/50 p-4 dark:border-white/10 dark:bg-white/[0.03]">
                 <p className="text-[10px] font-black uppercase tracking-wider text-gray-400 dark:text-gray-500">{p.sectionStudent}</p>
-                <DetailRow icon={User} label={p.detailName} value={detailData.user?.fullName} />
-                <DetailRow icon={Zap} label={p.detailStudentId} value={detailData.user?.studentId} mono />
-                <DetailRow icon={User} label={p.detailEmail} value={detailData.user?.email} />
+                <div className="flex items-center gap-3">
+                  <div className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#2C2DE0]/10 text-sm font-black text-[#2C2DE0] ring-1 ring-[#2C2DE0]/20">
+                    {detailData.user?.photo || detailData.user?.avatar
+                      ? <img src={detailData.user.photo || detailData.user.avatar} alt="" className="size-full object-cover" />
+                      : (detailData.user?.fullName || detailData.user?.name || "?").slice(0, 2).toUpperCase()}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-gray-900 dark:text-white">{detailData.user?.fullName || detailData.user?.name || p.detailNotProvided}</p>
+                    <p className="break-all text-xs text-gray-500 dark:text-gray-400">{detailData.user?.email || p.detailNotProvided}</p>
+                  </div>
+                </div>
+                <DetailRow icon={Zap} label={p.detailStudentId} value={detailData.user?.universityId || p.detailNotProvided} mono />
+                <DetailRow icon={User} label={p.detailDepartment} value={detailData.user?.department || p.detailNotProvided} />
               </div>
 
               <div className="space-y-3 rounded-2xl border border-gray-200/70 bg-white/50 p-4 dark:border-white/10 dark:bg-white/[0.03]">
@@ -590,6 +636,10 @@ const SeatReservationsPage = () => {
                 <DetailRow icon={Clock} label={p.detailStart} value={fmtDateTime(detailData.startTime)} />
                 <DetailRow icon={Clock} label={p.detailEnd} value={fmtDateTime(detailData.endTime)} />
                 <DetailRow icon={CalendarDays} label={p.detailBookedAt} value={fmtDateTime(detailData.createdAt)} />
+                <DetailRow icon={CalendarDays} label={p.detailCheckedInAt} value={fmtDateTime(detailData.checkedInAt)} />
+                {detailData.checkedOutAt && <DetailRow icon={CalendarDays} label={p.detailCheckedOutAt} value={fmtDateTime(detailData.checkedOutAt)} />}
+                {detailData.cancelledAt && <DetailRow icon={CalendarDays} label={p.detailCancelledAt} value={fmtDateTime(detailData.cancelledAt)} />}
+                {detailData.cancellationReason && <DetailRow icon={FileText} label={p.detailCancellationReason} value={detailData.cancellationReason} />}
               </div>
 
               <div className="rounded-2xl border border-gray-200/70 bg-white/50 p-4 dark:border-white/10 dark:bg-white/[0.03]">
@@ -597,6 +647,17 @@ const SeatReservationsPage = () => {
                 {buildTimeline(detailData).map((step, i, arr) => (
                   <TimelineStep key={i} {...step} last={i === arr.length - 1} />
                 ))}
+                {detailData.history?.length > 0 && (
+                  <div className="mt-2 border-t border-gray-100 pt-3 dark:border-white/10">
+                    <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-gray-400">{p.historyAction}</p>
+                    {detailData.history.map((entry) => (
+                      <p key={entry._id} className="py-1 text-xs text-gray-600 dark:text-gray-300">
+                        <span className="font-semibold">{p.historyActions?.[entry.action] || entry.action}</span>
+                        {" · "}{fmtDateTime(entry.createdAt)}
+                      </p>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 

@@ -1,306 +1,237 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { UserCircle, Key, Save, Mail, Briefcase, Phone, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Camera, Key, LoaderCircle, Save, UserCircle } from "lucide-react";
 import { useTeacherLanguage } from "../hooks/useLanguages";
 import { useAuth } from "@/context/AuthContext";
 import api from "@/api/client";
 
-const allowedFields = ["name", "phone", "department", "bio", "displayName"];
+const MAX_PHOTO_SIZE = 2 * 1024 * 1024;
+const ALLOWED_PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp"];
+
+const profileFromUser = (user) => ({
+  fullName: user?.fullName || user?.name || "",
+  displayName: user?.displayName || user?.name || "",
+  email: user?.email || "",
+  department: user?.department || "",
+  phone: user?.phone || "",
+  bio: user?.bio || "",
+});
 
 export default function TeacherProfilePage() {
   const { user, setUser } = useAuth();
   const { t } = useTeacherLanguage();
   const p = t?.profile || {};
-
-  const [form, setForm] = useState({
-    fullName: user?.fullName || user?.name || "Teacher",
-    displayName: user?.displayName || user?.name || "",
-    email: user?.email || "teacher@uniso.edu.so",
-    department: user?.department || "",
-    phone: user?.phone || "",
-    bio: user?.bio || "",
-  });
-  const [status, setStatus] = useState({ type: "", message: "" });
+  const [form, setForm] = useState(() => profileFromUser(user));
+  const [photo, setPhoto] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [saved, setSaved] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({ currentPassword: "", newPassword: "" });
+  const [passwordState, setPasswordState] = useState({ loading: false, error: "", success: "" });
+  const initials = (form.fullName || "T").split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
+  const preview = useMemo(() => photo ? URL.createObjectURL(photo) : null, [photo]);
+  const inputClass = "w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-900 outline-none focus-visible:ring-2 focus-visible:ring-[#2C2DE0] dark:border-zinc-700 dark:bg-zinc-800/50 dark:text-white";
 
   useEffect(() => {
-    if (!user) return;
-    setForm((current) => ({
-      ...current,
-      fullName: user?.fullName || user?.name || current.fullName || "Teacher",
-      displayName: user?.displayName || user?.name || "",
-      email: user?.email || current.email || "teacher@uniso.edu.so",
-      department: user?.department || "",
-      phone: user?.phone || "",
-      bio: user?.bio || "",
-    }));
+    setForm(profileFromUser(user));
   }, [user]);
 
-  const trimmedName = useMemo(() => form.fullName.trim(), [form.fullName]);
-  const canSubmit = trimmedName.length > 0 && !saving;
+  useEffect(() => () => {
+    if (preview) URL.revokeObjectURL(preview);
+  }, [preview]);
 
   const updateField = (field, value) => {
-    setForm((prev) => ({ ...prev, [field]: value }));
-    if (status.message) setStatus({ type: "", message: "" });
+    setForm((current) => ({ ...current, [field]: value }));
+    setError("");
+    setSaved(false);
   };
 
-  const handleSubmit = async () => {
-    if (!canSubmit) return;
+  const selectPhoto = (event) => {
+    const selected = event.target.files?.[0];
+    event.target.value = "";
+    if (!selected) return;
+    setError("");
+    setSaved(false);
+    if (!ALLOWED_PHOTO_TYPES.includes(selected.type)) {
+      setError(p.invalidPhoto || "Choose a JPG, PNG, or WebP image.");
+      return;
+    }
+    if (selected.size > MAX_PHOTO_SIZE) {
+      setError(p.photoTooLarge || "The image must be 2 MB or smaller.");
+      return;
+    }
+    setPhoto(selected);
+  };
 
-    const name = trimmedName;
+  const saveProfile = async (event) => {
+    event.preventDefault();
+    const name = form.fullName.trim();
     const phone = form.phone.trim();
-    const department = form.department.trim();
-    const bio = form.bio.trim().slice(0, 280);
-    const displayName = (form.displayName || name).trim().slice(0, 60);
-
+    if (!name) {
+      setError(p.fullNameRequired || "Full name is required.");
+      return;
+    }
     if (phone && phone.length < 5) {
-      setStatus({ type: "error", message: "Phone must be at least 5 characters." });
+      setError(p.phoneTooShort || "Phone must be at least 5 characters.");
       return;
     }
 
     setSaving(true);
-    setStatus({ type: "", message: "" });
-
+    setError("");
+    setSaved(false);
     try {
-      const { data } = await api.put("/auth/profile", {
-        name,
-        displayName,
-        phone,
-        department,
-        bio,
-      }, { withCredentials: true });
+      const body = new FormData();
+      body.append("name", name);
+      body.append("displayName", (form.displayName || name).trim().slice(0, 60));
+      body.append("department", form.department.trim());
+      body.append("phone", phone);
+      body.append("bio", form.bio.trim().slice(0, 280));
+      if (photo) body.append("photo", photo);
 
-      const userPayload = data?.data?.user || data?.user;
-      if (userPayload) setUser(userPayload);
-
-      setForm((prev) => ({
-        ...prev,
-        fullName: userPayload?.fullName || userPayload?.name || name,
-        displayName: userPayload?.displayName || displayName,
-        department: userPayload?.department || department,
-        phone: userPayload?.phone || phone,
-        bio: userPayload?.bio || bio,
-      }));
-
-      setStatus({ type: "success", message: "Profile updated successfully." });
-    } catch (error) {
-      const msg = error?.response?.data?.message || error?.message || "Failed to save profile.";
-      setStatus({ type: "error", message: msg });
+      const response = await api.put("/auth/profile", body);
+      const updatedUser = response.data?.data?.user || response.data?.user;
+      if (!updatedUser) throw new Error(p.saveError || "Profile update failed.");
+      setUser(updatedUser);
+      setForm(profileFromUser(updatedUser));
+      setPhoto(null);
+      setSaved(true);
+    } catch (saveError) {
+      setError(saveError.response?.data?.message || saveError.message || p.saveError || "Unable to save your profile.");
     } finally {
       setSaving(false);
     }
   };
 
+  const updatePassword = async (event) => {
+    event.preventDefault();
+    setPasswordState({ loading: true, error: "", success: "" });
+    try {
+      const response = await api.put("/auth/update-password", passwordForm);
+      setPasswordForm({ currentPassword: "", newPassword: "" });
+      setPasswordState({
+        loading: false,
+        error: "",
+        success: response.data?.message || p.passwordUpdated || "Password updated.",
+      });
+    } catch (passwordError) {
+      setPasswordState({
+        loading: false,
+        error: passwordError.response?.data?.message || p.passwordError || "Unable to update password.",
+        success: "",
+      });
+    }
+  };
+
   return (
-    <div className="w-full max-w-4xl space-y-8">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-            <UserCircle className="text-[#2C2DE0]" />
-            {p.title || "Profile"}
-          </h1>
-          <p className="text-sm text-gray-500 mt-1">{p.subtitle || "Update your personal information and account settings."}</p>
-        </div>
+    <div className="w-full max-w-5xl space-y-8">
+      <div>
+        <h1 className="flex items-center gap-2 text-2xl font-bold text-gray-900 dark:text-white">
+          <UserCircle className="text-[#2C2DE0]" />
+          {p.title || "Profile"}
+        </h1>
+        <p className="mt-1 text-sm text-gray-500">{p.subtitle || "Update your personal information and account settings."}</p>
       </div>
 
-      {status.message ? (
-        <div className={`flex items-start gap-2 rounded-xl border px-3 py-2 text-sm ${status.type === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300" : "border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300"}`}>
-          {status.type === "success" ? <CheckCircle2 className="mt-0.5 h-4 w-4" /> : <AlertCircle className="mt-0.5 h-4 w-4" />}
-          <span>{status.message}</span>
-        </div>
-      ) : null}
-
-      <div className="grid grid-cols-1 md:grid-cols-[1fr_300px] gap-6">
+      <div className="grid min-w-0 grid-cols-1 gap-6 md:grid-cols-[minmax(0,1fr)_280px]">
         <div className="space-y-6">
-          <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-gray-200 dark:border-zinc-800 p-6 shadow-sm">
-            <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-6 flex items-center gap-2">
-              <UserCircle className="w-5 h-5 text-gray-400" />
-              {p.personalInfo || "Personal Information"}
-            </h2>
-
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    {p.fullName || "Full Name"}
-                  </label>
-                  <div className="relative">
-                    <UserCircle className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <input
-                      type="text"
-                      className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-zinc-800/50 border border-gray-200 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2C2DE0] dark:text-white"
-                      value={form.fullName}
-                      onChange={(e) => updateField("fullName", e.target.value)}
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    {p.displayName || "Display Name"}
-                  </label>
-                  <div className="relative">
-                    <UserCircle className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <input
-                      type="text"
-                      className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-zinc-800/50 border border-gray-200 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2C2DE0] dark:text-white"
-                      value={form.displayName}
-                      onChange={(e) => updateField("displayName", e.target.value)}
-                    />
-                  </div>
-                </div>
+          <form onSubmit={saveProfile} className="space-y-5 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6 dark:border-zinc-800 dark:bg-zinc-900">
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white">{p.personalInfo || "Personal Information"}</h2>
+            <div className="flex flex-col items-center gap-4 rounded-xl bg-gray-50 p-4 sm:flex-row sm:text-left dark:bg-zinc-800/40">
+              <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#2C2DE0] text-2xl font-bold text-white">
+                {(preview || user?.photo || user?.avatar)
+                  ? <img src={preview || user.photo || user.avatar} alt={p.profilePhoto || "Profile photo"} className="h-full w-full object-cover" />
+                  : initials}
               </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    {p.email || "Email"}
+              <div className="min-w-0 flex-1 text-center sm:text-left">
+                <p className="font-semibold text-gray-900 dark:text-white">{p.profilePhoto || "Profile photo"}</p>
+                <p className="mt-1 text-xs text-gray-500">{p.photoHint || "JPG, PNG, or WebP up to 2 MB."}</p>
+                <div className="mt-3 flex flex-wrap justify-center gap-2 sm:justify-start">
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[#2C2DE0] px-3 py-2 text-xs font-bold text-white hover:brightness-110 focus-within:ring-2 focus-within:ring-[#2C2DE0]/60">
+                    <Camera size={14} /> {p.changePhoto || "Change Photo"}
+                    <input type="file" accept="image/jpeg,image/png,image/webp" onChange={selectPhoto} className="sr-only" />
                   </label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <input
-                      type="email"
-                      className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-zinc-800/50 border border-gray-200 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2C2DE0] dark:text-white"
-                      value={form.email}
-                      disabled
-                    />
-                  </div>
+                  {photo && (
+                    <button type="button" onClick={() => setPhoto(null)} className="rounded-lg px-3 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2C2DE0] dark:text-gray-300 dark:hover:bg-zinc-700">
+                      {p.cancel || "Cancel"}
+                    </button>
+                  )}
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    {p.department || "Department"}
-                  </label>
-                  <div className="relative">
-                    <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <input
-                      type="text"
-                      className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-zinc-800/50 border border-gray-200 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2C2DE0] dark:text-white"
-                      value={form.department}
-                      onChange={(e) => updateField("department", e.target.value)}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    {p.phone || "Phone"}
-                  </label>
-                  <div className="relative">
-                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <input
-                      type="text"
-                      className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-zinc-800/50 border border-gray-200 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2C2DE0] dark:text-white"
-                      value={form.phone}
-                      onChange={(e) => updateField("phone", e.target.value)}
-                    />
-                  </div>
-                </div>
-                <div className="hidden sm:flex" />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  {p.bio || "About"}
-                </label>
-                <textarea
-                  rows="4"
-                  className="w-full p-3 bg-gray-50 dark:bg-zinc-800/50 border border-gray-200 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2C2DE0] dark:text-white resize-none"
-                  placeholder={p.bioPlaceholder || "Tell your students about yourself..."}
-                  value={form.bio}
-                  onChange={(e) => updateField("bio", e.target.value)}
-                ></textarea>
-              </div>
-
-              <div className="pt-2 flex justify-end">
-                <button
-                  type="button"
-                  disabled={!canSubmit}
-                  onClick={handleSubmit}
-                  className="bg-[#2C2DE0] hover:bg-[#2C2DE0] text-white px-5 py-2.5 rounded-xl font-medium flex items-center gap-2 transition-colors text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150 group disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                  {saving ? p.saving || "Saving..." : p.updateProfile || "Update Profile"}
-                </button>
               </div>
             </div>
-          </div>
 
-          <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-gray-200 dark:border-zinc-800 p-6 shadow-sm">
-            <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-6 flex items-center gap-2">
-              <Key className="w-5 h-5 text-gray-400" />
-              {p.changePassword || "Change Password"}
-            </h2>
-            <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  {p.currentPassword || "Current Password"}
-                </label>
-                <input type="password" placeholder="••••••••" className="w-full px-4 py-2.5 bg-gray-50 dark:bg-zinc-800/50 border border-gray-200 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2C2DE0] dark:text-white" />
+                <label htmlFor="teacher-name" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">{p.fullName || "Full Name"}</label>
+                <input id="teacher-name" required maxLength={100} className={inputClass} value={form.fullName} onChange={(event) => updateField("fullName", event.target.value)} />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  {p.newPassword || "New Password"}
-                </label>
-                <input type="password" placeholder="••••••••" className="w-full px-4 py-2.5 bg-gray-50 dark:bg-zinc-800/50 border border-gray-200 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2C2DE0] dark:text-white" />
+                <label htmlFor="teacher-display-name" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">{p.displayName || "Display Name"}</label>
+                <input id="teacher-display-name" maxLength={60} className={inputClass} value={form.displayName} onChange={(event) => updateField("displayName", event.target.value)} />
               </div>
-              <div className="pt-2 flex justify-end">
-                <button className="bg-gray-100 dark:bg-zinc-800 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-zinc-700 border border-gray-200 dark:border-zinc-700 px-5 py-2.5 rounded-xl font-medium transition-colors">
-                  {p.updatePassword || "Update Password"}
-                </button>
+              <div>
+                <label htmlFor="teacher-email" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">{p.email || "Email"}</label>
+                <input id="teacher-email" type="email" className={`${inputClass} opacity-70`} value={form.email} readOnly />
+              </div>
+              <div>
+                <label htmlFor="teacher-department" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">{p.department || "Department"}</label>
+                <input id="teacher-department" className={inputClass} value={form.department} onChange={(event) => updateField("department", event.target.value)} />
+              </div>
+              <div>
+                <label htmlFor="teacher-phone" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">{p.phone || "Phone"}</label>
+                <input id="teacher-phone" type="tel" className={inputClass} value={form.phone} onChange={(event) => updateField("phone", event.target.value)} />
               </div>
             </div>
-          </div>
+            <div>
+              <label htmlFor="teacher-bio" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">{p.bio || "About"}</label>
+              <textarea id="teacher-bio" rows={4} maxLength={280} className={`${inputClass} resize-y`} value={form.bio} onChange={(event) => updateField("bio", event.target.value)} />
+            </div>
+            {error && <p role="alert" className="text-sm font-medium text-red-600">{error}</p>}
+            {saved && <p role="status" className="text-sm font-medium text-emerald-600">{p.profileUpdated || "Profile updated successfully."}</p>}
+            <div className="flex justify-end">
+              <button type="submit" disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-[#2C2DE0] px-5 py-2.5 text-sm font-bold text-white shadow-[0_4px_0_#1E1FAA] transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2C2DE0]/60 disabled:opacity-60">
+                {saving ? <LoaderCircle size={16} className="animate-spin" /> : <Save size={16} />}
+                {saving ? p.saving || "Saving…" : p.updateProfile || "Update Profile"}
+              </button>
+            </div>
+          </form>
+
+          <form onSubmit={updatePassword} className="space-y-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6 dark:border-zinc-800 dark:bg-zinc-900">
+            <h2 className="flex items-center gap-2 text-lg font-bold text-gray-900 dark:text-white"><Key className="h-5 w-5 text-gray-400" />{p.changePassword || "Change Password"}</h2>
+            <div>
+              <label htmlFor="teacher-current-password" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">{p.currentPassword || "Current Password"}</label>
+              <input id="teacher-current-password" required type="password" autoComplete="current-password" value={passwordForm.currentPassword} onChange={(event) => setPasswordForm({ ...passwordForm, currentPassword: event.target.value })} className={inputClass} />
+            </div>
+            <div>
+              <label htmlFor="teacher-new-password" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">{p.newPassword || "New Password"}</label>
+              <input id="teacher-new-password" required minLength={8} type="password" autoComplete="new-password" value={passwordForm.newPassword} onChange={(event) => setPasswordForm({ ...passwordForm, newPassword: event.target.value })} className={inputClass} />
+            </div>
+            {passwordState.error && <p role="alert" className="text-sm text-red-600">{passwordState.error}</p>}
+            {passwordState.success && <p role="status" className="text-sm text-emerald-600">{passwordState.success}</p>}
+            <div className="flex justify-end">
+              <button type="submit" disabled={passwordState.loading} className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-800 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2C2DE0] disabled:opacity-60 dark:border-zinc-700 dark:text-white dark:hover:bg-zinc-800">
+                {passwordState.loading ? p.saving || "Saving…" : p.updatePassword || "Update Password"}
+              </button>
+            </div>
+          </form>
         </div>
 
-        <div className="space-y-6">
-          <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-gray-200 dark:border-zinc-800 p-6 shadow-sm flex flex-col items-center text-center">
-            <div className="w-24 h-24 rounded-full bg-[#2C2DE0] dark:bg-[#2C2DE0]/20 text-[#fff] dark:text-[#2C2DE0] flex items-center justify-center text-3xl font-bold mb-4">
-              {form.fullName.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase() || "T"}
-            </div>
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white">{form.fullName || user?.name || "Teacher"}</h3>
-            <p className="text-sm text-gray-500">{form.department || p.department || "Teacher"}</p>
-
-            <div className="w-full h-px bg-gray-100 dark:bg-zinc-800 my-6"></div>
-
-            <div className="w-full space-y-3">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">{p.status || "Status"}</span>
-                <span className="font-semibold text-[#2C2DE0] dark:text-[#2C2DE0]">{p.active || "Active"}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">{p.memberSince || "Member Since"}</span>
-                <span className="font-medium text-gray-900 dark:text-white">{user?.createdAt ? new Date(user.createdAt).toLocaleDateString(undefined, { month: "short", year: "numeric" }) : "—"}</span>
-              </div>
-            </div>
+        <aside className="h-fit rounded-2xl border border-gray-200 bg-white p-6 text-center shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <div className="mx-auto flex h-24 w-24 items-center justify-center overflow-hidden rounded-full bg-[#2C2DE0] text-3xl font-bold text-white">
+            {(preview || user?.photo || user?.avatar)
+              ? <img src={preview || user.photo || user.avatar} alt="" className="h-full w-full object-cover" />
+              : initials}
           </div>
-        </div>
-      </div>
-    </div>
-  );
-}v>
-
-        <div className="space-y-6">
-          <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-gray-200 dark:border-zinc-800 p-6 shadow-sm flex flex-col items-center text-center">
-            <div className="w-24 h-24 rounded-full bg-[#2C2DE0] dark:bg-[#2C2DE0]/20 text-[#fff] dark:text-[#2C2DE0] flex items-center justify-center text-3xl font-bold mb-4">
-              {form.fullName.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase()}
-            </div>
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white">{form.fullName}</h3>
-            <p className="text-sm text-gray-500">{form.department}</p>
-            
-            <div className="w-full h-px bg-gray-100 dark:bg-zinc-800 my-6"></div>
-            
-            <div className="w-full space-y-3">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">{p.status || "Status"}</span>
-                <span className="font-semibold text-[#2C2DE0] dark:text-[#2C2DE0]">{p.active || "Active"}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">{p.memberSince || "Member Since"}</span>
-                <span className="font-medium text-gray-900 dark:text-white">Mar 2024</span>
-              </div>
-            </div>
+          <h3 className="mt-4 break-words text-lg font-bold text-gray-900 dark:text-white">{form.fullName}</h3>
+          <p className="text-sm text-gray-500">{form.department}</p>
+          <div className="my-6 h-px bg-gray-100 dark:bg-zinc-800" />
+          <div className="flex justify-between gap-3 text-sm">
+            <span className="text-gray-500">{p.status || "Status"}</span>
+            <span className="font-semibold text-emerald-600">{user?.status || p.active || "Active"}</span>
           </div>
-        </div>
+          <div className="mt-3 flex justify-between gap-3 text-sm">
+            <span className="text-gray-500">{p.memberSince || "Member Since"}</span>
+            <span className="font-medium text-gray-900 dark:text-white">{user?.createdAt ? new Date(user.createdAt).toLocaleDateString() : "—"}</span>
+          </div>
+        </aside>
       </div>
     </div>
   );

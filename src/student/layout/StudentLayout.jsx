@@ -85,7 +85,7 @@ const StudentLayout = () => {
 
       {/* Mobile-only floating menu button — the sidebar (and its toggle)
           is hidden below lg, so mobile needs its own way in. */}
-      <button className="bg-[#2C2DE0] text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150 group"
+      <button 
         onClick={() => setMobileNavOpen(true)}
         aria-label="Open menu"
         className="lg:hidden fixed bottom-5 left-5 z-40 w-12 h-12 rounded-2xl bg-[#2C2DE0] text-white

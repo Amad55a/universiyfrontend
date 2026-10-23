@@ -157,8 +157,10 @@ const TeacherTopBar = ({ pageTitle, pageSubtitle, onMenuClick, breadcrumbs = [] 
               onClick={() => setProfileOpen((v) => !v)}
               className="flex items-center gap-2 rounded-xl border border-gray-200/80 dark:border-white/10 pl-1 pr-2 py-1 hover:border-[#2C2DE0]/30 transition-colors bg-white/50 dark:bg-zinc-900/30"
             >
-              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-[#2C2DE0] to-[#2C2DE0] text-[11px] font-black text-white shadow-sm shadow-[#2C2DE0]/10">
-                {initials}
+              <span className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-lg bg-gradient-to-br from-[#2C2DE0] to-[#2C2DE0] text-[11px] font-black text-white shadow-sm shadow-[#2C2DE0]/10">
+                {user?.photo || user?.avatar
+                  ? <img src={user.photo || user.avatar} alt="" className="h-full w-full object-cover" />
+                  : initials}
               </span>
               <span className="hidden md:block text-xs font-semibold text-gray-700 dark:text-gray-200 max-w-[100px] truncate">
                 {firstName}

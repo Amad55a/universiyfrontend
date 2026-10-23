@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useLanguage } from "@/hooks/useLanguage";
 import HeroWelcome from "@/student/components/DashboardComponents/BrandSection";
 import ProgressStrip from "@/student/components/DashboardComponents/Progressstrip";
 import QuickActions from "@/student/components/DashboardComponents/QuickActions";
@@ -24,10 +25,10 @@ function useDashboardData() {
     dailyGoal: data?.dailyGoal ?? 3,
     completedToday: data?.completedToday ?? 0,
     stats: {
-      borrowed: data?.borrowed ?? 0,
-      reservations: data?.reservations ?? 0,
-      dueSoon: data?.dueSoon ?? 0,
-      unread: data?.unread ?? 0,
+      borrowed: data?.borrowed,
+      reservations: data?.reservations,
+      dueSoon: data?.dueSoon,
+      unread: data?.unread,
     },
   };
 }
@@ -38,6 +39,8 @@ const SkeletonBlock = ({ className = "" }) => (
 
 const DashboardPage = () => {
   const data = useDashboardData();
+  const { t } = useLanguage();
+  const copy = t?.mainContent ?? {};
 
   const { data: reservationMeta } = useQuery({
     queryKey: ["reservationMeta"],
@@ -69,6 +72,7 @@ const DashboardPage = () => {
           </>
         ) : (
           <>
+            {data.error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">{copy.dashboardStatsError || "Dashboard statistics could not be loaded. Please refresh to try again."}</p>}
             <HeroWelcome
               streak={data.streak}
               dailyGoal={data.dailyGoal}

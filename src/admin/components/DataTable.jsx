@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+// Core no-unused-vars does not detect JSX member-expression usage.
+// eslint-disable-next-line no-unused-vars
 import { motion } from "framer-motion";
 import {
   MoreHorizontal,
@@ -32,7 +34,10 @@ const DataTable = ({
   rowActions,
   serverPagination,
   onSearchChange,
+  searchDebounceMs = 0,
+  searchClassName,
   onSortChange,
+  toolbarFilters,
   extraFilters,
   renderRowActions,
   onRowClick,
@@ -47,13 +52,21 @@ const DataTable = ({
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [sortKey, setSortKey] = useState(null);
   const [sortDir, setSortDir] = useState("asc");
+  const searchTimer = useRef(null);
+
+  useEffect(() => () => clearTimeout(searchTimer.current), []);
 
   const isServer = Boolean(serverPagination);
 
   const handleSearch = (value) => {
     setSearch(value);
     setPage(1);
-    onSearchChange?.(value);
+    clearTimeout(searchTimer.current);
+    if (searchDebounceMs > 0) {
+      searchTimer.current = setTimeout(() => onSearchChange?.(value.trim()), searchDebounceMs);
+    } else {
+      onSearchChange?.(value);
+    }
   };
 
   const filtered = isServer
@@ -118,13 +131,13 @@ const DataTable = ({
       animate={{ opacity: 1 }}
       className="rounded-2xl border border-gray-200/60 dark:border-white/10 bg-white/60 dark:bg-white/[0.03] backdrop-blur-xl overflow-hidden shadow-sm"
     >
-      <div className="flex flex-col gap-3 border-b border-gray-100 dark:border-white/10 p-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center">
+      <div className="flex flex-col gap-3 border-b border-gray-100 dark:border-white/10 p-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
           <SearchBar
             value={search}
             onChange={handleSearch}
             placeholder={searchPlaceholder ?? ap.header.searchPlaceholder}
-            className="sm:max-w-xs"
+            className={cn("w-full sm:max-w-xs", searchClassName)}
           />
           {filterOptions && (
             <FilterDropdown
@@ -134,8 +147,13 @@ const DataTable = ({
               onChange={onFilterChange}
             />
           )}
+          {toolbarFilters && (
+            <div className="flex flex-wrap items-center gap-2">
+              {toolbarFilters}
+            </div>
+          )}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
           {selected.size > 0 && (
             <>
               {bulkActions.map((action) => (

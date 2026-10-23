@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
-import { NavLink, useLocation } from "react-router-dom";
+import { Link, NavLink, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, PanelLeftClose, PanelLeft } from "lucide-react";
 import { SIDEBAR_SECTIONS, resolveSidebarLabel } from "@/admin/config/sidebarConfig";
 import { useLanguage } from "@/hooks/useLanguage";
 import { useAuth } from "@/context/AuthContext";
 import { cn } from "@/lib/utils";
+import UnicoreLogo from "@/FrontDoorSystem/components/Logo";
 
 const SidebarNavItem = ({
   item,
@@ -113,6 +114,7 @@ const Sidebar = ({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile }) => 
   const sidebarT = ap.sidebar;
   const [expandedMenus, setExpandedMenus] = useState(new Set(["books"]));
   const location = useLocation();
+  const showBrand = !collapsed || mobileOpen;
 
   useEffect(() => {
     onCloseMobile?.();
@@ -135,15 +137,10 @@ const Sidebar = ({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile }) => 
           collapsed ? "justify-center" : "justify-between gap-2"
         )}
       >
-        {!collapsed && (
-          <div className="min-w-0">
-            <p className="text-sm font-black text-gray-900 dark:text-white truncate">
-              {ap.brand}
-            </p>
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-[#2C2DE0]">
-              {ap.roleLabel}
-            </p>
-          </div>
+        {showBrand && (
+          <Link to="/admin/dashboard" className="flex min-w-0 items-center overflow-hidden">
+            <UnicoreLogo />
+          </Link>
         )}
         <button
           type="button"

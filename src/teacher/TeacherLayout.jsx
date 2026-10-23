@@ -1,7 +1,7 @@
 // teacher/TeacherLayout.jsx
 // Root layout for all /teacher/* routes.
 // Drop this into your router as the parent element for teacher pages.
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -35,6 +35,7 @@ const PAGE_META = {
 const TeacherLayout = () => {
   const [collapsed, setCollapsed]     = useState(false);
   const [mobileOpen, setMobileOpen]   = useState(false);
+  const closeMobile = useCallback(() => setMobileOpen(false), []);
   const { t }  = useTeacherLanguage();
   const location = useLocation();
 
@@ -49,7 +50,7 @@ const TeacherLayout = () => {
         collapsed={collapsed}
         onToggleCollapse={() => setCollapsed((v) => !v)}
         mobileOpen={mobileOpen}
-        onCloseMobile={() => setMobileOpen(false)}
+        onCloseMobile={closeMobile}
       />
 
       {/* Content column */}

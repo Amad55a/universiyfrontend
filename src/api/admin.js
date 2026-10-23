@@ -127,6 +127,14 @@ export const fetchSeatReservationStats = () =>
 export const fetchSeatReservation = (id) =>
   api.get(`${ADMIN_BASE}/seat-reservations/${id}`);
 
+export const unwrapSeatReservationDetail = (response) => {
+  const reservation = response?.data?.reservation;
+  if (!reservation || typeof reservation !== "object") {
+    throw new Error("Reservation details are missing from the server response.");
+  }
+  return reservation;
+};
+
 export const adminCancelSeatReservation = (id) =>
   api.patch(`${ADMIN_BASE}/seat-reservations/${id}/cancel`);
 

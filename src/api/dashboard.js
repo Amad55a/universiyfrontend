@@ -1,6 +1,8 @@
-import api from "./client";
+import api from "@/api/client";
 
-export const getDashboardStats = () => api.get("/dashboard/stats").then(({ data }) => data);
-export const getRecommendedBooks = () => api.get("/dashboard/recommended-books").then(({ data }) => data);
-export const getRecentActivity = () => api.get("/dashboard/recent-activity").then(({ data }) => data);
-export const getRecentlyViewedBooks = () => api.get("/dashboard/recently-viewed").then(({ data }) => data);
+const apiFetch = async (path) => (await api.get(path)).data;
+
+export const getDashboardStats = () => apiFetch("/dashboard/stats");
+export const getRecommendedBooks = () => apiFetch("/dashboard/recommended-books");
+export const getRecentActivity = () => apiFetch("/dashboard/recent-activity");
+export const getRecentlyViewedBooks = () => apiFetch("/dashboard/recently-viewed");

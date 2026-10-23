@@ -11,6 +11,7 @@ import Modal from "@/admin/components/Modal";
 import ConfirmDialog from "@/admin/components/ConfirmDialog";
 import StatusBadge from "@/admin/components/StatusBadge";
 import { useLanguage } from "@/hooks/useLanguage";
+import { SOMALIA_TIME_ZONE } from "@/utils/time";
 import {
   fetchAdminSeats,
   createAdminSeat,
@@ -21,6 +22,20 @@ import {
 } from "@/api/admin";
 
 const emptyForm = { seatNumber: "", zone: "general" };
+const formatBookingTime = (value) => value
+  ? new Date(value).toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: SOMALIA_TIME_ZONE,
+  })
+  : "—";
+const formatBookingDate = (value) => value
+  ? new Date(value).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: SOMALIA_TIME_ZONE,
+  })
+  : "—";
 
 const SeatsPage = () => {
   const { t } = useLanguage();
@@ -145,9 +160,9 @@ const SeatsPage = () => {
       label: p.colSeatNumber,
       sortable: true,
       render: (row) => (
-        <span className="flex items-center gap-2 font-bold text-gray-900 dark:text-white">
-          <Armchair size={14} className="text-[#2C2DE0]" />
-          {row.seatNumber}
+        <span className="flex items-center gap-2 font-black text-gray-900 dark:text-white">
+          <Armchair size={15} className="text-[#2C2DE0]" />
+          <span className="text-sm tabular-nums">{row.seatNumber}</span>
         </span>
       ),
     },
@@ -163,21 +178,54 @@ const SeatsPage = () => {
       ),
     },
     {
-      key: "totalReservations",
-      label: p.colTotalReservations,
+      key: "isActive",
+      label: p.colPhysicalStatus,
+      render: (row) => (
+        <StatusBadge
+          label={row.isActive ? p.seatInService : p.seatOutOfService}
+          tone={row.isActive ? "green" : "gray"}
+        />
+      ),
+    },
+    {
+      key: "historicalReservations",
+      label: p.colHistoricalReservations,
       render: (row) => (
         <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">
-          {row.totalReservations ?? "—"}
+          {row.historicalReservations ?? 0}
         </span>
       ),
     },
     {
-      key: "activeSlotsToday",
-      label: p.colActiveSlotsToday,
+      key: "todayReservations",
+      label: p.colTodayReservations,
       render: (row) => (
-        <span className={`text-xs font-bold ${row.activeSlotsToday > 0 ? "text-[#2C2DE0] dark:text-[#2C2DE0]" : "text-gray-400"}`}>
-          {row.activeSlotsToday ?? 0}
+        <span
+          title={p.todayReservationCountHelp}
+          className={`text-xs font-bold ${row.todayReservations > 0 ? "text-[#2C2DE0] dark:text-[#2C2DE0]" : "text-gray-400"}`}
+        >
+          {row.todayReservations ?? 0}
         </span>
+      ),
+    },
+    {
+      key: "currentOrNextBooking",
+      label: p.colCurrentNextBooking,
+      render: (row) => row.currentOrNextBooking ? (
+        <div className="min-w-28">
+          <p className="text-xs font-semibold text-gray-800 dark:text-gray-200 tabular-nums">
+            {formatBookingTime(row.currentOrNextBooking.startTime)} – {formatBookingTime(row.currentOrNextBooking.endTime)}
+          </p>
+          <p className="text-[10px] text-gray-500 dark:text-gray-400">
+            {formatBookingDate(row.currentOrNextBooking.startTime)}
+          </p>
+          <StatusBadge
+            label={p.reservationStatuses?.[row.currentOrNextBooking.status] || row.currentOrNextBooking.status}
+            tone={row.currentOrNextBooking.status === "active" ? "green" : "yellow"}
+          />
+        </div>
+      ) : (
+        <span className="text-xs text-gray-500 dark:text-gray-400">{p.noUpcomingBookings}</span>
       ),
     },
   ];
@@ -188,12 +236,16 @@ const SeatsPage = () => {
       return;
     }
 
-    const headers = [p.colSeatNumber, p.colZone, p.colTotalReservations, p.colActiveSlotsToday];
+    const headers = [p.colSeatNumber, p.colZone, p.colPhysicalStatus, p.colHistoricalReservations, p.colTodayReservations, p.colCurrentNextBooking];
     const values = rows.map((row) => [
       row.seatNumber || "",
       zoneLabels[row.zone] || row.zone || "",
-      row.totalReservations ?? "",
-      row.activeSlotsToday ?? "",
+      row.isActive ? p.seatInService : p.seatOutOfService,
+      row.historicalReservations ?? 0,
+      row.todayReservations ?? 0,
+      row.currentOrNextBooking
+        ? `${formatBookingDate(row.currentOrNextBooking.startTime)} ${formatBookingTime(row.currentOrNextBooking.startTime)} - ${formatBookingTime(row.currentOrNextBooking.endTime)} (${row.currentOrNextBooking.status})`
+        : p.noUpcomingBookings,
     ]);
 
     const escapeCell = (cell) => {

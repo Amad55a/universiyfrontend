@@ -34,6 +34,12 @@ describe("reservation API paths", () => {
     expect(api.post).toHaveBeenCalledWith("/reservations/createReserve", payload);
   });
 
+  it("sends selected date and interval to the backend when creating a reservation", async () => {
+    const payload = { seatId: "seat-1", date: "2026-10-24", startTime: "08:00", endTime: "09:00" };
+    await createReservation(payload);
+    expect(api.post).toHaveBeenCalledWith("/reservations/createReserve", payload);
+  });
+
   it("keeps list, metadata, seat, cancel, extend, and reschedule requests separate", async () => {
     await getTodayReservations();
     await getReservationMeta();
@@ -45,7 +51,7 @@ describe("reservation API paths", () => {
     expect(api.get.mock.calls).toEqual([
       ["/reservations/today"],
       ["/reservations/meta"],
-      ["/reservations/seat/seat-1/slots"],
+      ["/reservations/seat/seat-1/slots", { params: { date: undefined } }],
     ]);
     expect(api.patch.mock.calls).toEqual([
       ["/reservations/reservation-1/cancel"],

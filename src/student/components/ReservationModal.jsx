@@ -23,7 +23,6 @@ import {
   Armchair,
   ScanLine,
 } from "lucide-react";
-// No Luxon required for demo browser time calculations.
 const PrimaryButton = ({ disabled, className = "", children, ...props }) => (
   <button
     disabled={disabled}
@@ -81,8 +80,8 @@ const overlapsBooking = (start, end, booking, today) => {
   return slotStart.toMillis() < bookingEnd && slotEnd.toMillis() > bookingStart;
 };
 
-const fetchBookedSlots = async (seatId) => {
-  return await getSeatBookedSlots(seatId);
+const fetchBookedSlots = async (seatId, date) => {
+  return await getSeatBookedSlots(seatId, date);
 };
 
 const DURATION_OPTIONS = [
@@ -123,25 +122,39 @@ const PolicySection = ({ t }) => {
   );
 };
 
-export default function ReservationModal({ seat, onClose }) {
+export default function ReservationModal({ seat, onClose, date: initialDate, initialStartTime, initialEndTime }) {
   const { t } = useLanguage();
   const copy = t.reservation;
   const queryClient = useQueryClient();
 
-  const [selectedSlot, setSelectedSlot] = useState(null);
-  const [duration, setDuration] = useState(1);
+  const [selectedSlot, setSelectedSlot] = useState(initialStartTime || null);
+  const [selectedDate, setSelectedDate] = useState(initialDate || DateTime.now().setZone(SOMALIA_TIME_ZONE).toISODate());
+  const initialStart = initialDate && initialStartTime
+    ? DateTime.fromISO(initialDate, { zone: SOMALIA_TIME_ZONE })
+      .set({ hour: Number(initialStartTime.slice(0, 2)), minute: Number(initialStartTime.slice(3)) })
+    : null;
+  const initialEnd = initialDate && initialEndTime
+    ? DateTime.fromISO(initialDate, { zone: SOMALIA_TIME_ZONE })
+      .set({ hour: Number(initialEndTime.slice(0, 2)), minute: Number(initialEndTime.slice(3)) })
+    : null;
+  const initialDuration = initialStart && initialEnd
+    ? initialEnd.diff(initialStart, "minutes").minutes / 60
+    : 1;
+  const [duration, setDuration] = useState(initialDuration || 1);
   const [step, setStep] = useState("form");
   const [qrData, setQrData] = useState(null);
   const [errorMsg, setErrorMsg] = useState(null);
 
-  const { data: bookedSlots = [] } = useQuery({
-    queryKey: ["seatSlots", seat._id],
-    queryFn: () => fetchBookedSlots(seat._id),
+  const { data: bookedSlots = [], isLoading: slotsLoading, isError: slotsError } = useQuery({
+    queryKey: ["seatSlots", seat._id, selectedDate],
+    queryFn: () => fetchBookedSlots(seat._id, selectedDate),
     staleTime: 0,
   });
 
   const now = DateTime.now().setZone(SOMALIA_TIME_ZONE);
-  const bookingOpen = now.hour >= OPEN_HOUR && now.hour < CLOSE_HOUR;
+  const today = now.toISODate();
+  const bookingOpen = selectedDate > today ||
+    (selectedDate === today && now.hour >= OPEN_HOUR && now.hour < CLOSE_HOUR);
 
   // Error banners auto-dismiss after 5s instead of sitting there forever.
   useEffect(() => {
@@ -176,23 +189,27 @@ export default function ReservationModal({ seat, onClose }) {
   });
 
   const endSlot = selectedSlot ? addDuration(selectedSlot, duration) : null;
-
-  const handleConfirm = () => {
-    if (!selectedSlot || !endSlot) return;
-    const slotIndex = ALL_SLOTS.indexOf(selectedSlot);
-    const durationSlots = Math.round(duration / 0.5);
-    mutate({ seatId: seat._id, slotIndex, durationSlots });
-  };
-
   const slotStates = ALL_SLOTS.map((slot) => {
     const end = addDuration(slot, duration);
     if (!end) return { slot, state: "closed" };
     const { hours, minutes } = parseSlot(slot);
-    const slotTime = now.set({ hour: hours, minute: minutes, second: 0, millisecond: 0 });
-    if (slotTime.toMillis() <= now.toMillis()) return { slot, state: "past" };
-    const taken = bookedSlots.some((b) => overlapsBooking(slot, end, b, now));
+    const slotTime = DateTime.fromISO(selectedDate, { zone: SOMALIA_TIME_ZONE })
+      .set({ hour: hours, minute: minutes, second: 0, millisecond: 0 });
+    if (selectedDate === today && slotTime.toMillis() <= now.toMillis()) return { slot, state: "past" };
+    const taken = bookedSlots.some((b) => overlapsBooking(slot, end, b, slotTime));
     return { slot, state: taken ? "taken" : "free" };
   });
+  const selectedSlotIsFree = slotStates.some(({ slot, state }) => slot === selectedSlot && state === "free");
+
+  const handleConfirm = () => {
+    if (!selectedSlot || !endSlot || !selectedSlotIsFree) return;
+    mutate({
+      seatId: seat._id,
+      date: selectedDate,
+      startTime: selectedSlot,
+      endTime: endSlot,
+    });
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
@@ -323,6 +340,23 @@ export default function ReservationModal({ seat, onClose }) {
           {step === "form" && (
             <div className="pt-5 space-y-5">
 
+              <label className="block space-y-2">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                  {t.common.date ?? "Reservation date"}
+                </span>
+                <input
+                  type="date"
+                  min={today}
+                  value={selectedDate}
+                  onChange={(event) => {
+                    if (!event.target.value) return;
+                    setSelectedDate(event.target.value);
+                    setSelectedSlot(null);
+                  }}
+                  className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                />
+              </label>
+
               {!bookingOpen && (
                 <div className="flex gap-2.5 items-start bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-2xl px-4 py-3">
                   <Clock size={14} className="text-amber-500 flex-shrink-0 mt-0.5" />
@@ -376,6 +410,11 @@ export default function ReservationModal({ seat, onClose }) {
                   </div>
                 </div>
 
+                {slotsError && (
+                  <p role="alert" className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-500/10 dark:text-red-300">
+                    Availability could not be loaded. Retry before reserving.
+                  </p>
+                )}
                 <div className="grid grid-cols-4 gap-1.5">
                   {slotStates.map(({ slot, state }) => {
                     const isSelected = selectedSlot === slot;
@@ -431,7 +470,7 @@ export default function ReservationModal({ seat, onClose }) {
 
               <PrimaryButton
                 onClick={handleConfirm}
-                disabled={!selectedSlot || !endSlot || !bookingOpen}
+                disabled={!selectedSlot || !endSlot || !selectedSlotIsFree || !bookingOpen || slotsLoading || slotsError}
                 className="w-full"
               >
                 {copy.confirm ?? "Confirm reservation"}

@@ -165,10 +165,10 @@ const VerifyCode = () => {
           {loading && (
             <div className="flex flex-col items-center text-center py-12 anim-fadeup">
               <div className="relative w-16 h-16 mb-6">
-                <div className="absolute inset-0 rounded-full border-4 border-[#2C2DE0] dark:border-[#2C2DE0]" />
-                <div className="absolute inset-0 rounded-full border-4 border-[#2C2DE0] border-t-transparent animate-spin" />
+                <div className="absolute inset-0 rounded-full border-4 border-[#2C2DE0]/20 dark:border-[#4F51FF]/30" />
+                <div className="absolute inset-0 rounded-full border-4 border-[#2C2DE0] dark:border-[#4F51FF] border-t-transparent animate-spin" />
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
-                  className="absolute inset-0 m-auto text-[#2C2DE0]">
+                  className="absolute inset-0 m-auto text-[#2C2DE0] dark:text-[#8E90FF]">
                   <path d="M9 12l2 2 4-4m5-2a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"
                     stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
@@ -181,7 +181,7 @@ const VerifyCode = () => {
               <div className="flex gap-1 mt-5">
                 {[0, 1, 2].map((i) => (
                   <span key={i}
-                    className="w-2 h-2 rounded-full bg-[#2C2DE0] animate-bounce"
+                    className="w-2 h-2 rounded-full bg-[#2C2DE0] dark:bg-[#4F51FF] animate-bounce"
                     style={{ animationDelay: `${i * 150}ms` }}
                   />
                 ))}
@@ -192,14 +192,15 @@ const VerifyCode = () => {
           {/* ── STEP INDICATOR ─────────────────────────────────────────── */}
           {!loading && (
             <div className="flex items-center gap-2 mb-6">
-              <div className={`h-1.5 flex-1 rounded-full transition-colors ${step >= 1 ? "bg-[#2C2DE0]" : "bg-gray-200 dark:bg-gray-800"}`} />
-              <div className={`h-1.5 flex-1 rounded-full transition-colors ${step >= 2 ? "bg-[#2C2DE0]" : "bg-gray-200 dark:bg-gray-800"}`} />
+              <div className={`h-1.5 flex-1 rounded-full transition-colors ${step >= 1 ? "bg-[#2C2DE0] dark:bg-[#4F51FF]" : "bg-gray-200 dark:bg-gray-800"}`} />
+              <div className={`h-1.5 flex-1 rounded-full transition-colors ${step >= 2 ? "bg-[#2C2DE0] dark:bg-[#4F51FF]" : "bg-gray-200 dark:bg-gray-800"}`} />
             </div>
           )}
 
           {verified && (
             <div className="anim-fadeup text-center">
-              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full ">
+              {/* FIX: white icon had no background, so it vanished on a white page */}
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#2C2DE0]">
                 <svg width="28" height="28" viewBox="0 0 24 24" fill="none" className="text-white">
                   <path d="M9 12l2 2 4-4m5-2a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"
                     stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -214,7 +215,7 @@ const VerifyCode = () => {
               </p>
 
               <div className="mt-8 flex justify-center">
-                <div className="h-10 w-10 rounded-full border-4 border-[#2C2DE0]/20 border-t-[#2C2DE0] animate-spin" />
+                <div className="h-10 w-10 rounded-full border-4 border-[#2C2DE0]/20 dark:border-[#4F51FF]/30 border-t-[#2C2DE0] dark:border-t-[#4F51FF] animate-spin" />
               </div>
             </div>
           )}
@@ -271,7 +272,7 @@ const VerifyCode = () => {
 
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-6 text-center">
                 {t("auth.alreadyVerified")}{" "}
-                <Link to="/login" className="text-[#2C2DE0] dark:text-[#2C2DE0] font-semibold hover:underline">
+                <Link to="/login" className="text-[#2C2DE0] dark:text-[#8E90FF] font-semibold hover:underline">
                   {t("auth.signInLink")}
                 </Link>
               </p>
@@ -294,7 +295,7 @@ const VerifyCode = () => {
               </h1>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                 {t("auth.verifyCodeStepSubtitle") || t("auth.verifyAccountSubtitle")}{" "}
-                <span className="font-semibold text-gray-700 dark:text-gray-300">{email}</span>
+                <span className="font-semibold text-gray-700 dark:text-gray-300 break-all">{email}</span>
               </p>
 
               <form onSubmit={handleCodeSubmit} autoComplete="off" className="flex flex-col gap-4 mt-6">

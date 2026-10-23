@@ -25,7 +25,7 @@ function calcStrength(score, t) {
   if (score <= 2) return { label: t("auth.passwordStrengthWeak"), bars: 1, bar: "bg-red-500", text: "text-red-500" };
   if (score === 3) return { label: t("auth.passwordStrengthFair"), bars: 2, bar: "bg-orange-400", text: "text-orange-400" };
   if (score === 4) return { label: t("auth.passwordStrengthGood"), bars: 3, bar: "bg-yellow-500", text: "text-yellow-500" };
-  return { label: t("auth.passwordStrengthStrong"), bars: 4, bar: "bg-[#2C2DE0]", text: "text-[#2C2DE0]" };
+  return { label: t("auth.passwordStrengthStrong"), bars: 4, bar: "bg-[#2C2DE0] dark:bg-[#4F51FF]", text: "text-[#2C2DE0] dark:text-[#8E90FF]" };
 }
 
 const PasswordStrengthMeter = ({ password, t }) => {
@@ -62,7 +62,7 @@ const PasswordStrengthMeter = ({ password, t }) => {
             key={c.id}
             className={`flex items-center gap-1.5 text-[11px] transition-colors duration-200 ${
               c.met
-                ? "text-[#2C2DE0] dark:text-[#2C2DE0]"
+                ? "text-[#2C2DE0] dark:text-[#8E90FF]"
                 : "text-gray-400 dark:text-gray-500"
             }`}
           >
@@ -238,7 +238,7 @@ const ForgotPassword = () => {
   };
 
   const handleResend = async () => {
-  
+
     setStep("sending");
     setLoadingPhase(0);
     try {
@@ -270,8 +270,9 @@ const ForgotPassword = () => {
           {/* ── SUCCESS ─────────────────────────────────────────────────────── */}
           {step === "success" && (
             <div className="flex flex-col items-center text-center py-8 anim-fadeup">
-              <div className="w-20 h-20 rounded-2xl bg-[#2C2DE0] dark:bg-[#2C2DE0]/10 flex items-center justify-center mb-5 anim-scalein">
-                <CheckCircle2 size={40} className="text-[#2C2DE0]" />
+              {/* FIX: was solid blue box + blue icon (invisible) */}
+              <div className="w-20 h-20 rounded-2xl bg-[#2C2DE0]/10 dark:bg-[#4F51FF]/20 flex items-center justify-center mb-5 anim-scalein">
+                <CheckCircle2 size={40} className="text-[#2C2DE0] dark:text-[#8E90FF]" />
               </div>
               <h1 className="text-xl font-black text-gray-900 dark:text-white">
                 {t("auth.passwordResetDone")}
@@ -280,7 +281,7 @@ const ForgotPassword = () => {
                 {t("auth.redirectingToLoginAfterReset")}
               </p>
               <div className="mt-8 w-full h-1 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
-                <div className="h-full bg-[#2C2DE0] rounded-full anim-progress" />
+                <div className="h-full bg-[#2C2DE0] dark:bg-[#4F51FF] rounded-full anim-progress" />
               </div>
             </div>
           )}
@@ -289,10 +290,10 @@ const ForgotPassword = () => {
           {step === "sending" && (
             <div className="flex flex-col items-center text-center py-12 anim-fadeup">
               <div className="relative w-16 h-16 mb-6">
-                <div className="absolute inset-0 rounded-full border-4 border-[#2C2DE0] dark:border-[#2C2DE0]" />
-                <div className="absolute inset-0 rounded-full border-4 border-[#2C2DE0] border-t-transparent animate-spin" />
+                <div className="absolute inset-0 rounded-full border-4 border-[#2C2DE0]/20 dark:border-[#4F51FF]/30" />
+                <div className="absolute inset-0 rounded-full border-4 border-[#2C2DE0] dark:border-[#4F51FF] border-t-transparent animate-spin" />
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
-                  className="absolute inset-0 m-auto text-[#2C2DE0]">
+                  className="absolute inset-0 m-auto text-[#2C2DE0] dark:text-[#8E90FF]">
                   <path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
                     stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
@@ -303,7 +304,7 @@ const ForgotPassword = () => {
               <div className="flex gap-1 mt-5">
                 {[0, 1, 2].map((i) => (
                   <span key={i}
-                    className="w-2 h-2 rounded-full bg-[#2C2DE0] animate-bounce"
+                    className="w-2 h-2 rounded-full bg-[#2C2DE0] dark:bg-[#4F51FF] animate-bounce"
                     style={{ animationDelay: `${i * 150}ms` }}
                   />
                 ))}
@@ -352,17 +353,17 @@ const ForgotPassword = () => {
                 />
 
                 <button
-  type="submit"
-  className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-full bg-[#2C2DE0] text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150 group"
->
-  {t("auth.sendResetCode")}
-  <ArrowRight size={15} className="group-hover:translate-x-0.5 transition-transform" />
-</button>
+                  type="submit"
+                  className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-full bg-[#2C2DE0] text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150 group"
+                >
+                  {t("auth.sendResetCode")}
+                  <ArrowRight size={15} className="group-hover:translate-x-0.5 transition-transform" />
+                </button>
               </form>
 
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-6 text-center">
                 {t("auth.haveAccount")}{" "}
-                <Link to="/login" className="text-[#2C2DE0] dark:text-[#2C2DE0] font-semibold hover:underline">
+                <Link to="/login" className="text-[#2C2DE0] dark:text-[#8E90FF] font-semibold hover:underline">
                   {t("auth.signInLink")}
                 </Link>
               </p>
@@ -387,10 +388,10 @@ const ForgotPassword = () => {
 
               {/* Locked email badge */}
               <div className="mt-4 mb-1 flex items-center gap-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" className="text-[#2C2DE0] shrink-0">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" className="text-[#2C2DE0] dark:text-[#8E90FF] shrink-0">
                   <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" />
                 </svg>
-                <span className="text-xs font-mono font-bold tracking-widest text-gray-800 dark:text-gray-100">
+                <span className="text-xs font-mono font-bold tracking-widest text-gray-800 dark:text-gray-100 break-all">
                   {email}
                 </span>
               </div>
@@ -472,7 +473,7 @@ const ForgotPassword = () => {
                   {confirmPw && (
                     <p className={`text-[11px] font-medium flex items-center gap-1 ${
                       newPassword === confirmPw
-                        ? "text-[#2C2DE0] dark:text-[#2C2DE0]"
+                        ? "text-[#2C2DE0] dark:text-[#8E90FF]"
                         : "text-red-500"
                     }`}>
                       {newPassword === confirmPw ? (
@@ -483,18 +484,18 @@ const ForgotPassword = () => {
                     </p>
                   )}
                 </div>
-{/* 1. Reset Password */}
-<button
-  type="submit"
-  disabled={!code.trim() || !newPassword || !confirmPw || resetPending}
-  aria-busy={resetPending}
-  className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-full bg-[#2C2DE0] text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none disabled:opacity-60 disabled:pointer-events-none transition-all duration-150 group"
->
-  {resetPending && <Loader2 size={15} className="animate-spin" aria-hidden="true" />}
-  {t("auth.resetPassword")}
-  <ArrowRight size={15} className="group-hover:translate-x-0.5 transition-transform" />
-</button>
-</form>
+                {/* 1. Reset Password */}
+                <button
+                  type="submit"
+                  disabled={!code.trim() || !newPassword || !confirmPw || resetPending}
+                  aria-busy={resetPending}
+                  className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-full bg-[#2C2DE0] text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none disabled:opacity-60 disabled:pointer-events-none transition-all duration-150 group"
+                >
+                  {resetPending && <Loader2 size={15} className="animate-spin" aria-hidden="true" />}
+                  {t("auth.resetPassword")}
+                  <ArrowRight size={15} className="group-hover:translate-x-0.5 transition-transform" />
+                </button>
+              </form>
 
               {/* Resend */}
               <div className="mt-5 text-center">
@@ -503,16 +504,16 @@ const ForgotPassword = () => {
                 </p>
                 <button
                   onClick={handleResend}
-                  className="text-xs font-semibold text-[#2C2DE0] dark:text-[#2C2DE0] hover:underline"
+                  className="text-xs font-semibold text-[#2C2DE0] dark:text-[#8E90FF] hover:underline"
                 >
                   {t("auth.forgotResendCode")}
                 </button>
               </div>
 
               {/* Back */}
-              <button 
+              <button
                 onClick={() => { setStep("email"); setCode(""); setResetError(""); }}
-                className="w-full mt-4 text-center text-xs text-gray-400 hover:text-[#2C2DE0] dark:hover:text-[#2C2DE0] font-semibold transition-colors"
+                className="w-full mt-4 text-center text-xs text-gray-400 hover:text-[#2C2DE0] dark:hover:text-[#8E90FF] font-semibold transition-colors"
               >
                 ← {t("auth.forgotBackToEmail")}
               </button>
@@ -554,7 +555,8 @@ const ForgotPassword = () => {
           </div>
 
           <div className="mt-8 bg-[#2C2DE0]/10 border border-[#2C2DE0]/20 rounded-2xl px-5 py-4 text-left">
-            <p className="text-[11px] font-bold uppercase tracking-widest text-[#2C2DE0] mb-1">
+            {/* FIX: blue text on black panel -> lighter blue */}
+            <p className="text-[11px] font-bold uppercase tracking-widest text-[#8E90FF] mb-1">
               {t("auth.forgotSecurityNote")}
             </p>
             <p className="text-xs text-gray-400 leading-relaxed">

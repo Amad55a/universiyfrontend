@@ -6,6 +6,7 @@ import PageTransition from "@/admin/components/PageTransition";
 import StatusBadge from "@/admin/components/StatusBadge";
 import { useLanguage } from "@/hooks/useLanguage";
 import { fetchAdminSeat, fetchSeatTimeline } from "@/api/admin";
+import { SOMALIA_TIME_ZONE, toSomaliaDateTime } from "@/utils/time";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const OPEN_HOUR  = 7;
@@ -22,15 +23,15 @@ const STATUS_COLOR = {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const toMinutes = (date) => {
-  const d = new Date(date);
-  return (d.getHours() - OPEN_HOUR) * 60 + d.getMinutes();
+  const d = toSomaliaDateTime(date);
+  return (d.hour - OPEN_HOUR) * 60 + d.minute;
 };
 
 const fmt = (date) =>
-  new Date(date).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+  new Date(date).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: SOMALIA_TIME_ZONE });
 
 const fmtDate = (date) =>
-  new Date(date).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+  new Date(date).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric", timeZone: SOMALIA_TIME_ZONE });
 
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 
@@ -59,8 +60,8 @@ const SlotDetail = ({ slot, labels, onClose }) => {
           <User size={13} className="mt-0.5 shrink-0 text-gray-400" />
           <div>
             <p className="text-[10px] text-gray-400">{labels.student}</p>
-            <p className="text-sm font-bold text-gray-900 dark:text-white">{slot.user?.fullName || "—"}</p>
-            <p className="text-[10px] text-gray-500">{slot.user?.studentId || slot.user?.email || ""}</p>
+            <p className="text-sm font-bold text-gray-900 dark:text-white">{slot.user?.fullName || slot.user?.name || "—"}</p>
+            <p className="text-[10px] text-gray-500">{slot.user?.universityId || slot.user?.email || ""}</p>
           </div>
         </div>
         <div className="flex items-start gap-2">
@@ -75,7 +76,7 @@ const SlotDetail = ({ slot, labels, onClose }) => {
           <div>
             <p className="text-[10px] text-gray-400">{labels.bookedAt}</p>
             <p className="text-xs font-semibold text-gray-700 dark:text-gray-300">
-              {new Date(slot.createdAt).toLocaleString()}
+              {new Date(slot.createdAt).toLocaleString("en-US", { timeZone: SOMALIA_TIME_ZONE })}
             </p>
           </div>
         </div>
@@ -184,12 +185,12 @@ const SeatTimelinePage = () => {
   const { t } = useLanguage();
   const ap = t.adminPanel;
   const p  = ap.pages.seatTimeline;
-  const c  = ap.common;
 
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedSlot, setSelectedSlot] = useState(null);
 
-  const dateStr = selectedDate.toISOString().split("T")[0];
+  const selectedDay = toSomaliaDateTime(selectedDate);
+  const dateStr = selectedDay.toISODate();
 
   const { data: seatData } = useQuery({
     queryKey: ["admin-seat", id],
@@ -207,17 +208,15 @@ const SeatTimelinePage = () => {
     },
   });
 
-  const reservations = timelineData?.reservations ?? [];
+  const reservations = useMemo(() => timelineData?.reservations ?? [], [timelineData?.reservations]);
   const freeSlots    = useMemo(() => computeFreeSlots(reservations), [reservations]);
 
   const goDay = (delta) => {
-    const d = new Date(selectedDate);
-    d.setDate(d.getDate() + delta);
-    setSelectedDate(d);
+    setSelectedDate(selectedDay.plus({ days: delta }).toJSDate());
     setSelectedSlot(null);
   };
 
-  const isToday = selectedDate.toDateString() === new Date().toDateString();
+  const isToday = dateStr === toSomaliaDateTime(new Date()).toISODate();
 
   const zoneLabel = { general: p.zoneGeneral, girls_only: p.zoneGirls };
 
@@ -365,9 +364,9 @@ const SeatTimelinePage = () => {
                         <div className="flex min-w-0 flex-1 items-center gap-3">
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-xs font-bold text-gray-900 dark:text-white">
-                              {r.user?.fullName || "—"}
+                              {r.user?.fullName || r.user?.name || "—"}
                             </p>
-                            <p className="text-[10px] text-gray-400">{r.user?.studentId || r.user?.email || ""}</p>
+                            <p className="text-[10px] text-gray-400">{r.user?.universityId || r.user?.email || ""}</p>
                           </div>
                           <div className="shrink-0 text-right">
                             <p className="text-xs font-semibold text-gray-700 dark:text-gray-300">

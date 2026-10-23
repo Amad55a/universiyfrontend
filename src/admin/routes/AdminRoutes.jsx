@@ -13,6 +13,8 @@ import SeatReservationsPage from "../pages/ReservationsPage";
 import AdminSendNotification from "../pages/AdminSendNotification";
 import AnalyticsRouter from "@/components/Analyticsrouter";
 import ReportsPage from "../pages/ReportPage";
+import AdminProfilePage from "../pages/AdminProfilePage";
+import AdminSearchDetailPage from "../pages/AdminSearchDetailPage";
 
 /**
  * Admin panel route tree — UI only, nested under /admin
@@ -37,6 +39,8 @@ const AdminRoutes = [
       { path: "analytics", element: <AnalyticsRouter /> },
       { path: "reports", element: <ReportsPage /> },
       { path: "settings", element: <SettingsPage /> },
+      { path: "profile", element: <AdminProfilePage /> },
+      { path: "search/:type/:id", element: <AdminSearchDetailPage /> },
     ],
   },
   { path: "/adminpanel", element: <Navigate to="/admin/dashboard" replace /> },

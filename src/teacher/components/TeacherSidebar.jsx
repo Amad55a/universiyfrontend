@@ -1,13 +1,14 @@
 // teacher/components/TeacherSidebar.jsx
-import { useEffect, useState } from "react";
-import { NavLink, useLocation } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
-import { PanelLeft, PanelLeftClose, GraduationCap } from "lucide-react";
+import { useEffect } from "react";
+import { Link, NavLink, useLocation } from "react-router-dom";
+import { AnimatePresence } from "framer-motion";
+import { PanelLeft, PanelLeftClose } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TEACHER_SIDEBAR_SECTIONS } from "../config/sidebarConfig";
 import { useAuth } from "@/context/AuthContext";
 import { useTeacherLanguage } from "../hooks/useLanguages";
-
+import { motion } from "framer-motion";
+import UnicoreLogo from "@/FrontDoorSystem/components/Logo";
 // ─── Single nav item ──────────────────────────────────────────────────────────
 const NavItem = ({ item, collapsed, sidebarT }) => {
   const Icon = item.icon;
@@ -47,6 +48,7 @@ const TeacherSidebar = ({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
   const { user } = useAuth();
   const location = useLocation();
   const s = t.sidebar;
+  const showBrand = !collapsed || mobileOpen;
 
   // Close mobile on route change
   useEffect(() => {
@@ -54,6 +56,8 @@ const TeacherSidebar = ({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
   }, [location.pathname, onCloseMobile]);
 
   const firstName = user?.fullName?.split(" ")[0] ?? user?.name?.split(" ")[0] ?? "Teacher";
+  const fullName = user?.fullName ?? user?.name ?? "Teacher";
+  const profilePhoto = user?.photo || user?.avatar;
 
   const sidebarContent = (
     <div className="flex h-full flex-col">
@@ -64,32 +68,16 @@ const TeacherSidebar = ({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
           collapsed ? "justify-center" : "justify-between gap-2"
         )}
       >
-        {!collapsed && (
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-7 h-7 bg-[#2C2DE0] rounded-lg flex items-center justify-center shrink-0">
-              <GraduationCap size={14} className="text-white" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-sm font-black text-gray-900 dark:text-white truncate">
-                {t.brand}
-              </p>
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-[#2C2DE0]">
-                {t.roleLabel}
-              </p>
-            </div>
-          </div>
-        )}
-        {collapsed && (
-          <div className="w-7 h-7 bg-[#2C2DE0] rounded-lg flex items-center justify-center">
-            <GraduationCap size={14} className="text-white" />
-          </div>
+        {showBrand && (
+          <Link to="/teacher/dashboard" className="flex min-w-0 items-center overflow-hidden">
+            <UnicoreLogo />
+          </Link>
         )}
         <button
           type="button"
           onClick={onToggleCollapse}
           className={cn(
-            "hidden lg:flex rounded-lg p-2 text-gray-400 hover:bg-white/60 dark:hover:bg-white/10 hover:text-gray-900 dark:hover:text-white transition-colors",
-            collapsed && "hidden"
+            "hidden lg:flex rounded-lg p-2 text-gray-400 hover:bg-white/60 dark:hover:bg-white/10 hover:text-gray-900 dark:hover:text-white transition-colors"
           )}
           aria-label={collapsed ? s.expand : s.collapse}
         >
@@ -121,26 +109,36 @@ const TeacherSidebar = ({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
       </nav>
 
       {/* ── Teacher profile strip ── */}
-      <div
-        className={cn(
-          "p-3 border-t border-gray-200/60 dark:border-white/10 flex items-center gap-3",
-          collapsed && "justify-center"
-        )}
-      >
-        <div className="w-8 h-8 bg-[#2C2DE0] rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0">
-          {firstName.charAt(0).toUpperCase()}
-        </div>
-        {!collapsed && (
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold text-gray-800 dark:text-white truncate">
-              {user?.fullName ?? user?.name ?? "Teacher"}
-            </p>
-            <div className="flex items-center gap-1 mt-0.5">
-              <div className="w-1.5 h-1.5 bg-[#2C2DE0] rounded-full" />
-              <p className="text-[11px] text-[#2C2DE0]">{t.common.online}</p>
-            </div>
+      <div className="p-3 border-t border-gray-200/60 dark:border-white/10">
+        <Link
+          to="/teacher/profile"
+          onClick={onCloseMobile}
+          aria-label={`${s.profile}: ${fullName}`}
+          title={collapsed ? fullName : undefined}
+          className={cn(
+            "flex items-center gap-3 rounded-xl p-2 transition-colors",
+            location.pathname === "/teacher/profile"
+              ? "bg-[#2C2DE0]/10 text-[#2C2DE0]"
+              : "hover:bg-white/60 dark:hover:bg-white/5",
+            collapsed && "justify-center"
+          )}
+        >
+          <div className="w-8 h-8 bg-[#2C2DE0] rounded-full flex items-center justify-center overflow-hidden text-white text-xs font-bold shrink-0">
+            {profilePhoto
+              ? <img src={profilePhoto} alt="" className="h-full w-full object-cover" />
+              : firstName.charAt(0).toUpperCase()}
           </div>
-        )}
+          {!collapsed && (
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-gray-800 dark:text-white truncate">
+                {fullName}
+              </p>
+              <p className="text-[11px] text-[#2C2DE0] truncate">
+                {user?.email || s.profile}
+              </p>
+            </div>
+          )}
+        </Link>
       </div>
     </div>
   );

@@ -92,8 +92,8 @@ export const getReservationMeta = async () => {
   return res.data;
 };
 
-export const createReservation = async ({ seatId, slotIndex, durationSlots }) => {
-  const res = await api.post(`${BASE}/createReserve`, { seatId, slotIndex, durationSlots });
+export const createReservation = async (payload) => {
+  const res = await api.post(`${BASE}/createReserve`, payload);
   return res.data;
 };
 
@@ -102,8 +102,13 @@ export const getTodayReservations = async () => {
   return res.data;
 };
 
-export const getSeatBookedSlots = async (seatId) => {
-  const res = await api.get(`${BASE}/seat/${seatId}/slots`);
+export const getSeatAvailability = async (date, startTime, endTime) => {
+  const res = await api.get(`${BASE}/availability`, { params: { date, startTime, endTime } });
+  return res.data;
+};
+
+export const getSeatBookedSlots = async (seatId, date) => {
+  const res = await api.get(`${BASE}/seat/${seatId}/slots`, { params: { date } });
   return res.data;
 };
 

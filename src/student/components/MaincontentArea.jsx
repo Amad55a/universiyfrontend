@@ -31,6 +31,9 @@ const BookCard = ({ book }) => (
     </div>
     <p className="text-xs font-bold text-gray-800 dark:text-white mt-2 line-clamp-1">{book.title}</p>
     <p className="text-[10px] text-gray-400 line-clamp-1">{book.author}</p>
+    {typeof book.progress === "number" && book.progress > 0 && (
+      <p className="mt-1 text-[10px] font-semibold text-[#2C2DE0]">{book.progress}% read</p>
+    )}
   </Link>
 );
 
@@ -55,18 +58,18 @@ const HorizontalSkeleton = () => (
 );
 
 const MainContentArea = () => {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const mc = t?.dashboard.mainContent ?? {};
 
-  const { data: recommended = [], isLoading: loadingRecommended } = useQuery({
+  const { data: recommended = [], isLoading: loadingRecommended, isError: recommendedError } = useQuery({
     queryKey: ["dashboard", "recommendedBooks"],
     queryFn: getRecommendedBooks,
   });
-  const { data: activity = [], isLoading: loadingActivity } = useQuery({
+  const { data: activity = [], isLoading: loadingActivity, isError: activityError } = useQuery({
     queryKey: ["dashboard", "recentActivity"],
     queryFn: getRecentActivity,
   });
-  const { data: recentlyViewed = [], isLoading: loadingViewed } = useQuery({
+  const { data: recentlyViewed = [], isLoading: loadingViewed, isError: viewedError } = useQuery({
     queryKey: ["dashboard", "recentlyViewed"],
     queryFn: getRecentlyViewedBooks,
   });
@@ -78,6 +81,8 @@ const MainContentArea = () => {
         <SectionHeader title={mc.recommended ?? "Recommended For You"} href="/e-library" seeAll={mc.seeAll ?? "See all"} />
         {loadingRecommended ? (
           <HorizontalSkeleton />
+        ) : recommendedError ? (
+          <p role="alert" className="text-xs text-red-600">{mc.recommendationsError ?? "Recommendations could not be loaded."}</p>
         ) : recommended.length === 0 ? (
           <p className="text-xs text-gray-400">{mc.emptyRecommended ?? "No recommendations yet — start reading to get suggestions."}</p>
         ) : (
@@ -98,22 +103,26 @@ const MainContentArea = () => {
                   <div key={i} className="h-10 bg-gray-100 dark:bg-gray-900 rounded-lg animate-pulse" />
                 ))}
               </div>
+            ) : activityError ? (
+              <p role="alert" className="py-6 text-center text-xs text-red-600">{mc.activityError ?? "Activity history could not be loaded."}</p>
             ) : activity.length === 0 ? (
               <div className="py-8 text-center">
                 <History size={20} className="mx-auto text-gray-300 dark:text-gray-700 mb-2" />
                 <p className="text-xs text-gray-400">{mc.emptyActivity ?? "No recent activity yet."}</p>
               </div>
             ) : (
-              activity.map((a, i) => <ActivityRow key={i} item={a} />)
+              activity.map((a, i) => <ActivityRow key={`${a.type}-${a.occurredAt || i}`} item={a} copy={mc} language={language} />)
             )}
           </div>
         </section>
 
         {/* Recently viewed */}
         <section>
-          <SectionHeader title={mc.recentlyViewed ?? "Recently Viewed"} href="/e-library" seeAll={mc.seeAll ?? "See all"} />
+          <SectionHeader title={mc.recentlyViewed ?? "Recently Viewed"} href="/e-library/recently-viewed" seeAll={mc.seeAll ?? "See all"} />
           {loadingViewed ? (
             <HorizontalSkeleton />
+          ) : viewedError ? (
+            <p role="alert" className="text-xs text-red-600">{mc.recentlyViewedError ?? "Recently viewed books could not be loaded."}</p>
           ) : recentlyViewed.length === 0 ? (
             <p className="text-xs text-gray-400">{mc.emptyViewed ?? "Books you open will show up here."}</p>
           ) : (

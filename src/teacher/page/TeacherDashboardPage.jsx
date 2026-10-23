@@ -63,9 +63,10 @@ const TeacherDashboardPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const fullName = user?.fullName ?? user?.name ?? "Teacher";
-  const firstName = fullName.split(" ")[0];
-  const initials = fullName.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase();
+  const fullName = (user?.fullName || user?.name || "Teacher").trim();
+  const firstName = fullName.split(/\s+/)[0] || "Teacher";
+  const greetingName = firstName.charAt(0).toLocaleUpperCase() + firstName.slice(1);
+  const initials = fullName.split(/\s+/).map((namePart) => namePart[0] || "").join("").slice(0, 2).toUpperCase();
 
   const fetchDashboard = async () => {
     setLoading(true);
@@ -102,17 +103,27 @@ const TeacherDashboardPage = () => {
           style={{ boxShadow: "0 1px 3px rgba(0,0,0,0.01), 0 4px 12px rgba(0,0,0,0.01)" }}>
           <div className="relative z-10 p-6 flex items-center justify-between gap-5">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-[#2C2DE0] flex items-center justify-center text-white text-base font-black shrink-0 shadow-sm shadow-[#2C2DE0]/20">
-                {initials}
-              </div>
+              <Link
+                to="/teacher/profile"
+                aria-label={p.viewProfile || "View and update your profile"}
+                title={p.viewProfile || "View and update your profile"}
+                className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#2C2DE0] text-base font-black text-white shadow-sm shadow-[#2C2DE0]/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2C2DE0] focus-visible:ring-offset-2 dark:focus-visible:ring-offset-zinc-900"
+              >
+                {user?.photo || user?.avatar
+                  ? <img src={user.photo || user.avatar} alt="" className="h-full w-full object-cover" />
+                  : initials}
+              </Link>
               <div>
                 <h2 className="text-base font-bold text-gray-900 dark:text-white">
-                  {getGreeting(t, firstName)}
+                  {getGreeting(t, greetingName)}
                 </h2>
                 <div className="flex items-center gap-1.5 mt-0.5">
                   <div className="w-1.5 h-1.5 rounded-full bg-[#2C2DE0] animate-pulse" />
                   <span className="text-xs text-gray-400 dark:text-gray-500">{c?.online || "Online and Synced"}</span>
                 </div>
+                <Link to="/teacher/profile" className="mt-1 inline-block text-xs font-semibold text-[#2C2DE0] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2C2DE0]">
+                  {p.viewProfile || "View profile"}
+                </Link>
               </div>
             </div>
 

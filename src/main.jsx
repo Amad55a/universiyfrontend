@@ -20,6 +20,8 @@ import "@fontsource/inter";
 import RoleRoute from './routes/RoleRoutes'
 import AdminLayout from './admin/layout/AdminLayout'
 import AdminDashboardPage from './admin/pages/AdminDashboardPage'
+import AdminProfilePage from './admin/pages/AdminProfilePage'
+import AdminSearchDetailPage from './admin/pages/AdminSearchDetailPage'
 import UsersPage from './admin/pages/UsersPage'
 import UserDetailsPage from './admin/pages/UserDetailsPage'
 import UniversityStudentsPage from './admin/pages/UniversityRegistryPage'
@@ -53,6 +55,7 @@ import BookReader from './student/components/DashboardComponents/bookreader';
 import { ELibrarySearchProvider } from './student/components/DashboardComponents/E-librarysearch';
 import MyLibrary from './student/components/DashboardComponents/myLibrary';
 import MyBorrowsPage from './student/components/DashboardComponents/Myborrowspage';
+import RecentlyViewedPage from './student/pages/RecentlyViewedPage';
 import UserAuthorityPage from './admin/pages/userAuthorityPage';
 import TeacherDashboardPage from './teacher/page/TeacherDashboardPage';
 import { teacherRoutes } from './teacher/TeacherRoutes';
@@ -152,6 +155,8 @@ createRoot(document.getElementById('root')).render(
                                             <Route path="/e-library" element={<LibraryHome />} />
                                             <Route path="/e-library/my-library" element={<MyLibrary />} />
                                             <Route path="/e-library/reader/:id" element={<BookReader />} />
+                                            <Route path="/e-library/recently-viewed" element={<RecentlyViewedPage />} />
+                                            <Route path="/e-library/:id" element={<BookReader />} />
 
                                             <Route path="/my-reservations" element={<MyReservationsPage />} />
                                             <Route path="/notifications" element={<NotificationsPage />} />
@@ -202,6 +207,8 @@ createRoot(document.getElementById('root')).render(
                                             <Route path="analytics" element={<AnalyticsPage />} />
                                             <Route path="reports" element={<ReportsPage />} />
                                             <Route path="settings" element={<SettingsPage />} />
+                                            <Route path="profile" element={<AdminProfilePage />} />
+                                            <Route path="search/:type/:id" element={<AdminSearchDetailPage />} />
                                             <Route path="/admin/user-authority" element={<UserAuthorityPage />} />
                                         </Route>
 
