@@ -1,6 +1,6 @@
 // teacher/components/TeacherTopBar.jsx
 import { useState, useRef, useEffect } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Menu,
@@ -17,11 +17,13 @@ import { useTeacherLanguage } from "../hooks/useLanguages";
 import { cn } from "@/lib/utils";
 import ThemeToggle from "@/components/ThemeToggle";
 import NotificationPanel from "@/components/NotificationPanel";
+import { toast } from "sonner";
 
 const TeacherTopBar = ({ pageTitle, pageSubtitle, onMenuClick, breadcrumbs = [] }) => {
   const { user, logout } = useAuth();
   const { t } = useTeacherLanguage();
   const location = useLocation();
+  const navigate = useNavigate();
 
   const p = t?.dashboard ?? {};
   const c = t?.common ?? {};
@@ -55,6 +57,17 @@ const TeacherTopBar = ({ pageTitle, pageSubtitle, onMenuClick, breadcrumbs = [] 
     .join("")
     .toUpperCase()
     .slice(0, 2) || "TH";
+
+  const handleLogout = async () => {
+    setProfileOpen(false);
+    try {
+      await logout();
+      navigate("/login", { replace: true });
+    } catch (error) {
+      console.error("[TeacherTopBar] logout failed", error);
+      toast.error(c?.logoutError || "Unable to sign out. Please try again.");
+    }
+  };
 
   // Build breadcrumbs dynamically if not supplied
   const crumbs =
@@ -196,10 +209,7 @@ const TeacherTopBar = ({ pageTitle, pageSubtitle, onMenuClick, breadcrumbs = [] 
 
                   <button
                     type="button"
-                    onClick={() => {
-                      setProfileOpen(false);
-                      logout?.();
-                    }}
+                    onClick={handleLogout}
                     className="flex w-full items-center gap-2 px-4 py-2.5 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-500/10 transition-colors border-t border-gray-50 dark:border-zinc-900"
                   >
                     <LogOut size={14} />

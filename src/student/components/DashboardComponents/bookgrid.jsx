@@ -42,8 +42,8 @@ const BookGrid = ({
   // Enhanced responsive grid classes for all viewports
   const gridClass =
     cols === "recommended"
-      ? "grid grid-cols-2 xs:grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4 md:gap-5"
-      : "grid grid-cols-2 xs:grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4 md:gap-5";
+      ? "grid grid-cols-[repeat(2,minmax(0,1fr))] xs:grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4 md:gap-5"
+      : "grid grid-cols-[repeat(2,minmax(0,1fr))] xs:grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4 md:gap-5";
 
   // If grouping is enabled and books have _reason fields, render by sections
   if (groupByReason && books.some((b) => b._reason)) {

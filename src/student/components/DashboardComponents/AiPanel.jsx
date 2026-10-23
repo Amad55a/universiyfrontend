@@ -4,11 +4,14 @@
 // FULL page text with an explicit no-summarizing instruction, instead of
 // asking the model to "summarize the page in the other language."
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Sparkles, Send, Loader2, Languages, RotateCcw, Mic, MicOff,
   Volume2, VolumeX, Maximize2, Minimize2, GraduationCap,
 } from "lucide-react";
+import api, { getAccessToken } from "@/api/client";
+import InteractiveQuiz from "@/community/meetings/InteractiveQuiz";
+import { mergeVoiceTranscript } from "./aiVoiceInput";
 
 const BACKEND_AI_URL = `${import.meta.env.VITE_API_BASE_URL ?? ""}/ai/chat`;
 
@@ -154,17 +157,78 @@ const toPlainText = (md) =>
     .trim();
 
 // ── API call (server-side, no key exposed) — UNCHANGED CONTRACT ──────────────
-const callAI = async (messages, systemPrompt) => {
-  const token = localStorage.getItem("token");
-  const res   = await fetch(BACKEND_AI_URL, {
+const callAIStream = async (messages, systemPrompt, onText) => {
+  const token = getAccessToken() || localStorage.getItem("token");
+  const res   = await fetch(`${BACKEND_AI_URL}/stream`, {
     method:  "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body:    JSON.stringify({ messages, systemPrompt }),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data?.message ?? `Error ${res.status}`);
-  return data.reply;
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data?.message ?? `Error ${res.status}`);
+  }
+  if (!res.body) throw new Error("AI response streaming is unavailable in this browser.");
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let reply = "";
+
+  const processEvent = (eventText) => {
+    const lines = eventText.split("\n");
+    const eventName = lines.find((line) => line.startsWith("event:"))?.slice(6).trim();
+    const data = lines
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).trimStart())
+      .join("\n");
+    if (!data || data === "[DONE]") return;
+
+    let payload;
+    try {
+      payload = JSON.parse(data);
+    } catch {
+      throw new Error("AI response stream returned invalid data.");
+    }
+    if (eventName === "error" || payload.error) {
+      throw new Error(payload.message ?? payload.error?.message ?? "AI response stream failed.");
+    }
+
+    const text = (payload.candidates?.[0]?.content?.parts ?? [])
+      .map((part) => part.text ?? "")
+      .join("");
+    if (text) {
+      reply += text;
+      onText(text);
+    }
+  };
+
+  const consumeBuffer = () => {
+    let separator = buffer.indexOf("\n\n");
+    while (separator !== -1) {
+      processEvent(buffer.slice(0, separator));
+      buffer = buffer.slice(separator + 2);
+      separator = buffer.indexOf("\n\n");
+    }
+  };
+
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true }).replace(/\r\n/gu, "\n");
+      consumeBuffer();
+    }
+    buffer += decoder.decode().replace(/\r\n/gu, "\n");
+    if (buffer.trim()) processEvent(buffer);
+    return reply || "No response generated.";
+  } catch (error) {
+    await reader.cancel(error).catch(() => undefined);
+    throw error;
+  } finally {
+    reader.releaseLock();
+  }
 };
 
 // ── Extract real page text from PDF ──────────────────────────────────────────
@@ -285,9 +349,17 @@ const buildActionMsg = ({ id, currentPage, selectedText, language }) => {
 
 // ── Speech recognition (voice input) ──────────────────────────────────────────
 const getRecognition = () => {
+  if (typeof window === "undefined") return null;
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   return SR ? new SR() : null;
 };
+
+let messageSequence = 0;
+const createMessage = (role, content) => ({
+  id: `ai-message-${++messageSequence}`,
+  role,
+  content,
+});
 
 // ─── Tutor greeting card ──────────────────────────────────────────────────────
 const TutorGreeting = ({ T, accentAlpha, studentName, bookTitle, currentPage, statusLabel }) => (
@@ -336,69 +408,136 @@ const AIPanel = ({
   const [loading,      setLoading]      = useState(false);
   const [activeAction, setActiveAction] = useState(null);
   const [language,     setLanguage]     = useState("en");
-  const [pageText,     setPageText]     = useState(null);
-  const [textStatus,   setTextStatus]   = useState("idle");
+  const [pageData, setPageData] = useState({ pdfRef: null, page: null, text: null, status: "idle" });
   const [streamText,   setStreamText]   = useState("");
   const [listening,    setListening]    = useState(false);
+  const [voiceError,   setVoiceError]   = useState("");
+  const [interactiveQuiz, setInteractiveQuiz] = useState(null);
+  const [quizLoading, setQuizLoading] = useState(false);
+  const [quizError, setQuizError] = useState("");
+  const [quizSourceAvailable, setQuizSourceAvailable] = useState(false);
   const [speakingIdx,  setSpeakingIdx]  = useState(null);
   const chatRef       = useRef(null);
   const inputRef       = useRef(null);
   const recognitionRef = useRef(null);
+  const voiceBaseRef = useRef("");
+  const inFlightRef = useRef(false);
+  const streamedTextRef = useRef("");
+  const quizInFlightRef = useRef(false);
+  const quizSourceRef = useRef("");
+  const followOutputRef = useRef(true);
+  const handledSelectionTriggerRef = useRef(0);
+  const [showLatest, setShowLatest] = useState(false);
+  const pageDataIsCurrent = pageData.pdfRef === pdfRef && pageData.page === currentPage;
+  const pageText = pageDataIsCurrent ? pageData.text : null;
+  const textStatus = pageDataIsCurrent ? pageData.status : pdfRef ? "loading" : "idle";
 
   useEffect(() => {
-    chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight, behavior: "smooth" });
+    const chat = chatRef.current;
+    if (chat && followOutputRef.current) {
+      chat.scrollTop = chat.scrollHeight;
+    }
   }, [messages, streamText]);
 
+  const handleChatScroll = () => {
+    const chat = chatRef.current;
+    if (!chat) return;
+    const following = chat.scrollHeight - chat.scrollTop - chat.clientHeight < 48;
+    followOutputRef.current = following;
+    setShowLatest(!following);
+  };
+
+  const jumpToLatest = () => {
+    followOutputRef.current = true;
+    setShowLatest(false);
+    chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight, behavior: "smooth" });
+  };
+
   useEffect(() => {
-    if (!pdfRef) { setTextStatus("idle"); return; }
-    setTextStatus("loading");
+    if (!pdfRef) return undefined;
     let cancelled = false;
     extractPageText(pdfRef, currentPage).then((t) => {
       if (cancelled) return;
-      setPageText(t);
-      setTextStatus(t ? "ok" : "scanned");
+      setPageData({
+        pdfRef,
+        page: currentPage,
+        text: t,
+        status: t ? "ok" : "scanned",
+      });
     });
     return () => { cancelled = true; };
   }, [pdfRef, currentPage]);
 
-  useEffect(() => {
-    if (onAskAboutSelection && selectedText) {
-      handleSend(`Explain this selected text: "${selectedText}"`, "explain");
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onAskAboutSelection]);
-
   const toggleListening = useCallback(() => {
     if (listening) {
       recognitionRef.current?.stop();
-      setListening(false);
       return;
     }
     const rec = getRecognition();
     if (!rec) {
-      setMessages((p) => [...p, { role: "assistant", content: "Voice input isn't supported in this browser. Try Chrome or Edge." }]);
+      setVoiceError(language === "so"
+        ? "Gelinta codka lagama taageero browser-kan. Isku day Chrome ama Edge."
+        : "Voice input isn't supported in this browser. Try Chrome or Edge.");
       return;
     }
+    setVoiceError("");
+    voiceBaseRef.current = question;
     rec.lang = language === "so" ? "so-SO" : "en-US";
     rec.interimResults = true;
     rec.continuous = false;
     rec.onresult = (e) => {
-      const transcript = Array.from(e.results).map((r) => r[0].transcript).join("");
-      setQuestion(transcript);
+      const transcript = Array.from(e.results)
+        .map((result) => result[0]?.transcript || "")
+        .join("")
+        .trim();
+      if (transcript) setQuestion(mergeVoiceTranscript(voiceBaseRef.current, transcript));
     };
-    rec.onend = () => setListening(false);
-    rec.onerror = () => setListening(false);
+    rec.onstart = () => setListening(true);
+    rec.onend = () => {
+      setListening(false);
+      recognitionRef.current = null;
+    };
+    rec.onerror = (event) => {
+      const messages = language === "so"
+        ? {
+            "not-allowed": "Oggolaanshaha makarafoonka waa la diiday. Ka hubi dejinta browser-ka.",
+            "audio-capture": "Makarafoon lama helin. Ku xidh ama dooro makarafoon.",
+            "no-speech": "Cod lama maqal. Mar kale isku day.",
+            network: "Aqoonsiga codku wuu fashilmay sababo la xiriira isku xirka.",
+          }
+        : {
+            "not-allowed": "Microphone permission was denied. Check your browser permissions.",
+            "audio-capture": "No microphone was found. Connect or select a microphone.",
+            "no-speech": "No speech was detected. Please try again.",
+            network: "Speech recognition failed because of a network error.",
+          };
+      if (event.error !== "aborted") {
+        setVoiceError(messages[event.error] || (language === "so"
+          ? "Aqoonsiga codku wuu fashilmay. Mar kale isku day."
+          : "Speech recognition failed. Please try again."));
+      }
+      setListening(false);
+      recognitionRef.current = null;
+    };
     recognitionRef.current = rec;
-    rec.start();
-    setListening(true);
-  }, [listening, language]);
+    try {
+      rec.start();
+    } catch (error) {
+      recognitionRef.current = null;
+      setListening(false);
+      setVoiceError(error?.name === "NotAllowedError"
+        ? (language === "so" ? "Oggolaanshaha makarafoonka waa la diiday." : "Microphone permission was denied.")
+        : (language === "so" ? "Makarafoonka lama bilaabi karin." : "Could not start microphone listening."));
+    }
+  }, [listening, language, question]);
 
   const toggleSpeak = useCallback((idx, text) => {
     if (speakingIdx === idx) {
-      window.speechSynthesis.cancel();
+      window.speechSynthesis?.cancel();
       setSpeakingIdx(null);
       return;
     }
+    if (!window.speechSynthesis || typeof SpeechSynthesisUtterance === "undefined") return;
     window.speechSynthesis.cancel();
     const utter = new SpeechSynthesisUtterance(toPlainText(text));
     utter.lang = language === "so" ? "so-SO" : "en-US";
@@ -409,39 +548,95 @@ const AIPanel = ({
     setSpeakingIdx(idx);
   }, [speakingIdx, language]);
 
-  useEffect(() => () => window.speechSynthesis?.cancel(), []);
+  useEffect(() => () => {
+    recognitionRef.current?.abort?.();
+    window.speechSynthesis?.cancel();
+  }, []);
 
   const streamReply = useCallback(async (fullText) => {
+    const messageId = `ai-message-${++messageSequence}`;
+    setMessages((previous) => [...previous, { id: messageId, role: "assistant", content: fullText }]);
     setStreamText("");
-    const words = fullText.split(" ");
-    for (let i = 0; i < words.length; i++) {
-      await new Promise((r) => setTimeout(r, 18 + Math.random() * 14));
-      setStreamText((prev) => prev + (i === 0 ? "" : " ") + words[i]);
-    }
-    setMessages((prev) => [...prev, { role: "assistant", content: fullText }]);
-    setStreamText("");
+    streamedTextRef.current = "";
   }, []);
+
+  const appendStreamText = (part) => {
+    streamedTextRef.current += part;
+    setStreamText((previous) => previous + part);
+  };
+
+  const generateInteractiveQuiz = async (sourceText) => {
+    const sourceContent = String(sourceText || "").trim();
+    if (quizInFlightRef.current) return;
+    quizSourceRef.current = sourceContent;
+    setQuizSourceAvailable(sourceContent.length >= 30 && sourceContent.length <= 12000);
+    if (sourceContent.length < 30) {
+      setQuizError(language === "so"
+        ? "Qoraal ku filan lagama helin boggan. Dooro qoraal dheeraad ah ama isku day bog kale."
+        : "There is not enough readable text on this page. Select more text or try another page.");
+      return;
+    }
+    if (sourceContent.length > 12000) {
+      setQuizError(language === "so"
+        ? "Qoraalka la doortay aad buu u dheer yahay. Dooro qayb ka gaaban."
+        : "The selected source is too long. Select a shorter passage.");
+      return;
+    }
+
+    quizInFlightRef.current = true;
+    setQuizError("");
+    setQuizLoading(true);
+    setInteractiveQuiz(null);
+    try {
+      const { data } = await api.post("/ai/quiz/generate", { sourceContent });
+      const validQuestions = Array.isArray(data?.questions)
+        && data.questions.length === 5
+        && data.questions.every((item) =>
+          typeof item.id === "string"
+          && typeof item.question === "string"
+          && item.question.trim()
+          && Array.isArray(item.options)
+          && item.options.length === 4
+          && item.options.every((option) => typeof option === "string" && option.trim())
+          && !Object.hasOwn(item, "correctIndex")
+          && !Object.hasOwn(item, "explanation")
+        );
+      if (!data?.quizId || data.pointsPerQuestion !== 3 || !validQuestions) {
+        throw new Error("The quiz service returned an invalid quiz. Please retry.");
+      }
+      setInteractiveQuiz(data);
+    } catch (error) {
+      setQuizError(error?.response?.data?.message ?? error?.message ?? "Quiz generation failed. Please retry.");
+    } finally {
+      quizInFlightRef.current = false;
+      setQuizLoading(false);
+    }
+  };
 
   // ── Core send (backend contract unchanged) ────────────────────────────────
   // For "translate" with no selection, we run FULL-PAGE mode: pageText is
   // chunked and translated chunk-by-chunk, then stitched back together, so
   // long pages don't get cut off by a single response's length limit.
-  const handleSend = useCallback(async (userMsg, actionId = null) => {
+  const handleSend = async (userMsg, actionId = null) => {
     const trimmed = userMsg.trim();
-    if (!trimmed || loading) return;
+    if (!trimmed || loading || quizLoading || inFlightRef.current || quizInFlightRef.current) return;
+    if (actionId === "quiz") {
+      await generateInteractiveQuiz(selectedText || pageText || "");
+      return;
+    }
 
     if (isBlocked(trimmed)) {
       setMessages((p) => [...p,
-        { role: "user", content: trimmed },
-        { role: "assistant", content: "This content is protected within the Uniso E-Library system." },
+        createMessage("user", trimmed),
+        createMessage("assistant", "This content is protected within the Uniso E-Library system."),
       ]);
       setQuestion("");
       return;
     }
     if (!actionId && !isOnTopic(trimmed)) {
       setMessages((p) => [...p,
-        { role: "user", content: trimmed },
-        { role: "assistant", content: "I can only help with content from the current book. Try asking about this specific page, or use a quick action above." },
+        createMessage("user", trimmed),
+        createMessage("assistant", "I can only help with content from the current book. Try asking about this specific page, or use a quick action above."),
       ]);
       setQuestion("");
       return;
@@ -449,11 +644,13 @@ const AIPanel = ({
 
     const isFullPageTranslate = actionId === "translate" && !selectedText;
 
+    inFlightRef.current = true;
     setLoading(true);
     setActiveAction(actionId);
-    const userEntry = { role: "user", content: trimmed };
+    const userEntry = createMessage("user", trimmed);
     setMessages((prev) => [...prev, userEntry]);
     setQuestion("");
+    setVoiceError("");
 
     try {
       if (isFullPageTranslate && pageText && pageText.length > 2200) {
@@ -465,33 +662,50 @@ const AIPanel = ({
           const system = buildSystem({
             bookTitle, currentPage, numPages, pageText: chunk, language, fullTranslationMode: true,
           });
-          const reply = await callAI(
+          if (translatedParts.length > 0) appendStreamText("\n\n");
+          const reply = await callAIStream(
             [{ role: "user", content: `Translate this excerpt fully into ${target}. Do not summarize.` }],
-            system
+            system,
+            appendStreamText
           );
           translatedParts.push(reply);
         }
         await streamReply(translatedParts.join("\n\n"));
       } else {
-        const history = [...messages, userEntry];
+        const history = [...messages, userEntry].map(({ role, content }) => ({ role, content }));
         const system  = buildSystem({
           bookTitle, currentPage, numPages, pageText, language,
           fullTranslationMode: isFullPageTranslate,
         });
-        const reply = await callAI(history, system);
+        const reply = await callAIStream(history, system, appendStreamText);
         await streamReply(reply);
       }
     } catch (err) {
+      const partialReply = streamedTextRef.current.trim();
+      if (partialReply) {
+        setMessages((p) => [...p, createMessage("assistant", partialReply)]);
+        streamedTextRef.current = "";
+      }
+      setStreamText("");
       let msg = "The AI assistant is temporarily unavailable. Please try again shortly.";
       if (err.message?.includes("429"))   msg = "Rate limit reached. Please wait a moment.";
       if (err.message?.includes("fetch")) msg = "Network error. Check your connection and retry.";
       if (err.message?.includes("config") || err.message?.includes("key")) msg = "AI not configured. Contact the library administrator.";
-      setMessages((p) => [...p, { role: "assistant", content: msg }]);
+      setMessages((p) => [...p, createMessage("assistant", msg)]);
     } finally {
+      inFlightRef.current = false;
       setLoading(false);
       setActiveAction(null);
     }
-  }, [loading, messages, bookTitle, currentPage, numPages, pageText, language, selectedText, streamReply]);
+  };
+
+  useEffect(() => {
+    if (!onAskAboutSelection || !selectedText || handledSelectionTriggerRef.current === onAskAboutSelection) return;
+    handledSelectionTriggerRef.current = onAskAboutSelection;
+    handleSend(`Explain this selected text: "${selectedText}"`, "explain");
+    // Trigger auto-send once for each selection request, not on message renders.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onAskAboutSelection]);
 
   const isDark      = T.id === "dark" || T.id === "night";
   const accentAlpha = isDark ? "rgba(34,197,94,0.15)" : "rgba(22,163,74,0.1)";
@@ -513,7 +727,7 @@ const AIPanel = ({
   });
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: T.aiPanel, fontFamily: "'Inter', 'SF Pro Text', system-ui, sans-serif" }}>
+    <div className="library-tutor-panel" style={{ display: "flex", flex: "1 1 0%", flexDirection: "column", minHeight: 0, background: T.aiPanel, fontFamily: "'Inter', 'SF Pro Text', system-ui, sans-serif" }}>
 
       {/* Header */}
       <div style={{ padding: "14px 16px 12px", borderBottom: `1px solid ${T.aiPanelBorder}`, flexShrink: 0 }}>
@@ -569,7 +783,7 @@ const AIPanel = ({
             <button className="bg-[#2C2DE0] text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150 group"
               key={action.id}
               onClick={() => handleSend(buildActionMsg({ id: action.id, currentPage, selectedText, language }), action.id)}
-              disabled={loading}
+              disabled={loading || quizLoading}
               style={{
                 padding: "9px 12px", borderRadius: "12px", textAlign: "left",
                 border: activeAction === action.id ? "none" : `1px solid ${T.border}`,
@@ -577,9 +791,9 @@ const AIPanel = ({
                 boxShadow: activeAction === action.id ? PRIMARY_BTN_SHADOW_ACTIVE : "none",
                 color:      activeAction === action.id ? "#fff"   : T.text,
                 fontSize: "12.5px", fontWeight: 600,
-                cursor: loading ? "not-allowed" : "pointer",
+                cursor: loading || quizLoading ? "not-allowed" : "pointer",
                 display: "flex", alignItems: "center", gap: "8px",
-                transition: "all 0.12s", opacity: loading ? 0.5 : 1,
+                transition: "all 0.12s", opacity: loading || quizLoading ? 0.5 : 1,
               }}
             >
               <span style={{ fontSize: "14px", lineHeight: 1 }}>{action.emoji}</span>
@@ -614,7 +828,11 @@ const AIPanel = ({
       )}
 
       {/* Chat area */}
-      <div ref={chatRef} style={{ flex: 1, overflowY: "auto", padding: "6px 12px 14px", display: "flex", flexDirection: "column", gap: "14px" }}>
+      <div
+        ref={chatRef}
+        onScroll={handleChatScroll}
+        style={{ flex: 1, overflowY: "auto", padding: "6px 12px 14px", display: "flex", flexDirection: "column", gap: "14px" }}
+      >
         {messages.length === 0 && !streamText && (
           <TutorGreeting
             T={T} accentAlpha={accentAlpha} studentName={studentName}
@@ -622,8 +840,8 @@ const AIPanel = ({
           />
         )}
 
-        {messages.map((m, i) => (
-          <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: m.role === "user" ? "flex-end" : "flex-start" }}>
+        {messages.map((m) => (
+          <div key={m.id} style={{ display: "flex", flexDirection: "column", alignItems: m.role === "user" ? "flex-end" : "flex-start" }}>
             {m.role === "assistant" && (
               <div style={{ display: "flex", alignItems: "flex-start", gap: "8px", maxWidth: "96%" }}>
                 <div style={{
@@ -641,18 +859,28 @@ const AIPanel = ({
                 }}>
                   {renderMarkdown(m.content, T)}
                   <button className="bg-[#2C2DE0] text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150 group"
-                    onClick={() => toggleSpeak(i, m.content)}
-                    title={speakingIdx === i ? "Stop reading" : "Read aloud"}
+                    onClick={() => toggleSpeak(m.id, m.content)}
+                    title={speakingIdx === m.id ? "Stop reading" : "Read aloud"}
                     style={{
                       marginTop: "8px", display: "inline-flex", alignItems: "center", gap: "5px",
                       background: "transparent", border: `1px solid ${T.border}`, borderRadius: "8px",
                       padding: "4px 9px", fontSize: "10.5px", fontWeight: 700, color: T.accent, cursor: "pointer",
                     }}
                   >
-                    {speakingIdx === i ? <VolumeX size={11} /> : <Volume2 size={11} />}
-                    {speakingIdx === i ? "Stop" : "Listen"}
+                    {speakingIdx === m.id ? <VolumeX size={11} /> : <Volume2 size={11} />}
+                    {speakingIdx === m.id ? "Stop" : "Listen"}
                   </button>
                 </div>
+                {voiceError && (
+                  <p role="alert" style={{ color: "#dc2626", fontSize: "11px", margin: "7px 4px 0" }}>
+                    {voiceError}
+                  </p>
+                )}
+                {listening && (
+                  <p role="status" style={{ color: T.accent, fontSize: "11px", textAlign: "center", margin: "7px 4px 0" }}>
+                    {language === "so" ? "Waan ku dhageysanayaa. Riix makarafoonka si aad u joojiso." : "Listening. Select the microphone again to stop."}
+                  </p>
+                )}
               </div>
             )}
             {m.role === "user" && (
@@ -704,7 +932,48 @@ const AIPanel = ({
             </div>
           </div>
         )}
+
+        {quizLoading && (
+          <div role="status" style={{ color: T.textMuted, fontSize: "12px", padding: "8px 4px" }}>
+            {language === "so" ? "Imtixaanka isdhexgalka ah ayaa la diyaarinayaa…" : "Preparing your interactive quiz…"}
+          </div>
+        )}
+        {quizError && (
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+            <p role="alert" style={{ color: "#dc2626", fontSize: "12px", margin: 0 }}>{quizError}</p>
+            {quizSourceAvailable && (
+              <button
+                type="button"
+                onClick={() => generateInteractiveQuiz(quizSourceRef.current)}
+                disabled={quizLoading}
+                style={{ border: `1px solid ${T.border}`, borderRadius: "8px", padding: "5px 9px", background: T.surface, color: T.accent, fontSize: "11px", fontWeight: 700, cursor: quizLoading ? "not-allowed" : "pointer" }}
+              >
+                Retry
+              </button>
+            )}
+          </div>
+        )}
+        {interactiveQuiz && (
+          <InteractiveQuiz
+            quiz={interactiveQuiz}
+            onCreateAnother={() => generateInteractiveQuiz(quizSourceRef.current)}
+          />
+        )}
       </div>
+      {showLatest && (
+        <button
+          type="button"
+          onClick={jumpToLatest}
+          style={{
+            alignSelf: "center", margin: "0 0 6px", padding: "6px 12px",
+            border: `1px solid ${T.border}`, borderRadius: "999px",
+            background: T.surface, color: T.accent, fontSize: "11px",
+            fontWeight: 700, cursor: "pointer",
+          }}
+        >
+          Jump to latest response
+        </button>
+      )}
 
       {/* Input area */}
       <div style={{ padding: "12px", borderTop: `1px solid ${T.aiPanelBorder}`, flexShrink: 0 }}>
@@ -715,8 +984,11 @@ const AIPanel = ({
           transition: "border-color 0.15s",
         }}>
           <button className="bg-[#2C2DE0] text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150 group"
+            type="button"
             onClick={toggleListening}
             title={listening ? "Stop listening" : "Ask by voice"}
+            aria-label={listening ? "Stop voice input" : "Start voice input"}
+            aria-pressed={listening}
             style={{
               width: "30px", height: "30px", borderRadius: "9px", flexShrink: 0,
               border: listening ? "none" : `1px solid ${T.border}`,
@@ -732,8 +1004,10 @@ const AIPanel = ({
           <textarea
             ref={inputRef}
             value={question}
+            aria-label="Ask the library tutor"
             onChange={(e) => {
               setQuestion(e.target.value);
+              setVoiceError("");
               e.target.style.height = "auto";
               e.target.style.height = Math.min(e.target.scrollHeight, 104) + "px";
             }}
@@ -749,18 +1023,20 @@ const AIPanel = ({
             }}
           />
           <button className="bg-[#2C2DE0] text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150 group"
+            type="button"
             onClick={() => handleSend(question)}
-            disabled={!question.trim() || loading}
+            aria-label="Send message"
+            disabled={!question.trim() || loading || quizLoading}
             style={{
               width: "30px", height: "30px", borderRadius: "9px", flexShrink: 0,
-              ...(!question.trim() || loading
+              ...(!question.trim() || loading || quizLoading
                 ? { background: T.border, border: "none", boxShadow: "none" }
                 : primaryBtnStyle(false)),
-              cursor: (!question.trim() || loading) ? "not-allowed" : "pointer",
+              cursor: (!question.trim() || loading || quizLoading) ? "not-allowed" : "pointer",
               display: "flex", alignItems: "center", justifyContent: "center",
             }}
           >
-            <Send size={13} color={!question.trim() || loading ? T.textFaint : "#fff"} />
+            <Send size={13} color={!question.trim() || loading || quizLoading ? T.textFaint : "#fff"} />
           </button>
         </div>
         <p style={{ fontSize: "10px", color: T.textFaint, textAlign: "center", marginTop: "7px", letterSpacing: "0.01em" }}>

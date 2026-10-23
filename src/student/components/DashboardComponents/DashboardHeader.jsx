@@ -17,6 +17,7 @@ import NotificationPanel from "@/components/NotificationPanel";
 import { useLanguage } from "@/hooks/useLanguage";
 import UnicoreLogo from "@/FrontDoorSystem/components/Logo";
 import { MobileSidebarDrawer } from "@/student/components/Sidebar";
+import { toast } from "sonner";
 
 const resolvePhoto = (photo) => {
   if (!photo) return null;
@@ -80,7 +81,16 @@ const DashboardHeader = () => {
   const profileRef = useRef(null);
   const photoUrl   = resolvePhoto(user?.photo);
 
-  const handleLogout = () => { logout(); navigate("/login"); };
+  const handleLogout = async () => {
+    setOpenProfile(false);
+    try {
+      await logout();
+      navigate("/login", { replace: true });
+    } catch (error) {
+      console.error("[DashboardHeader] logout failed", error);
+      toast.error(t?.nav?.logoutError || "Unable to sign out. Please try again.");
+    }
+  };
 
   useEffect(() => {
     const handler = (e) => {

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useCallback, useState } from "react";
 import { Outlet } from "react-router-dom";
 import { AnimatePresence } from "framer-motion";
 import Sidebar from "@/admin/components/Sidebar/Sidebar";
@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 const AdminLayout = () => {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const closeMobile = useCallback(() => setMobileOpen(false), []);
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 dark:bg-black dark:text-white transition-colors">
@@ -16,7 +17,7 @@ const AdminLayout = () => {
           collapsed={collapsed}
           onToggleCollapse={() => setCollapsed((v) => !v)}
           mobileOpen={mobileOpen}
-          onCloseMobile={() => setMobileOpen(false)}
+          onCloseMobile={closeMobile}
         />
 
         <div
@@ -25,7 +26,10 @@ const AdminLayout = () => {
             "transition-[margin] duration-250"
           )}
         >
-          <AdminHeader onMenuClick={() => setMobileOpen(true)} />
+          <AdminHeader
+            mobileOpen={mobileOpen}
+            onMenuClick={() => setMobileOpen((open) => !open)}
+          />
 
           <main className="flex-1 overflow-x-hidden p-4 sm:p-6 lg:p-8">
             <AnimatePresence mode="wait">

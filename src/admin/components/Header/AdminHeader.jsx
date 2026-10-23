@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence } from "framer-motion";
 import {
@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import NotificationPanel from "@/components/NotificationPanel";
 import { LoaderCircle, Search as SearchIcon } from "lucide-react";
 import { searchAdmin } from "@/api/adminSearch";
+import { toast } from "sonner";
 
 const PAGE_TITLE_KEYS = {
   "/admin/dashboard": "dashboard",
@@ -34,7 +35,7 @@ const PAGE_TITLE_KEYS = {
 const getPageKey = (pathname) => PAGE_TITLE_KEYS[pathname];
 const isSafeAdminHref = (href) => typeof href === "string" && href.startsWith("/admin/") && !href.startsWith("//");
 
-const AdminHeader = ({ onMenuClick, pageTitle, breadcrumbs = [] }) => {
+const AdminHeader = ({ onMenuClick, mobileOpen = false, pageTitle, breadcrumbs = [] }) => {
   const { t } = useLanguage();
   const ap = t.adminPanel;
   const { user, logout } = useAuth();
@@ -146,6 +147,17 @@ const AdminHeader = ({ onMenuClick, pageTitle, breadcrumbs = [] }) => {
     setActiveSearchIndex(-1);
   };
 
+  const handleLogout = async () => {
+    setProfileOpen(false);
+    try {
+      await logout();
+      navigate("/login", { replace: true });
+    } catch (error) {
+      console.error("[AdminHeader] logout failed", error);
+      toast.error(ap.header.logoutError || "Unable to sign out. Please try again.");
+    }
+  };
+
   const initials =
     user?.name
       ?.split(" ")
@@ -166,8 +178,10 @@ const AdminHeader = ({ onMenuClick, pageTitle, breadcrumbs = [] }) => {
         <button
           type="button"
           onClick={onMenuClick}
-          className="lg:hidden rounded-xl p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
-          aria-label={ap.sidebar.openMenu}
+          className="lg:hidden rounded-xl p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2C2DE0]"
+          aria-label={mobileOpen ? ap.sidebar.closeMenu : ap.sidebar.openMenu}
+          aria-expanded={mobileOpen}
+          aria-controls="admin-mobile-navigation"
         >
           <Menu size={20} />
         </button>
@@ -281,7 +295,7 @@ const AdminHeader = ({ onMenuClick, pageTitle, breadcrumbs = [] }) => {
                   </Link>
                   <button
                     type="button"
-                    onClick={() => logout()}
+                    onClick={handleLogout}
                     className="flex w-full items-center gap-2 px-4 py-2.5 text-xs font-medium text-red-600 hover:bg-red-500/10 transition-colors"
                   >
                     <LogOut size={14} />

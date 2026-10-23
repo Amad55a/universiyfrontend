@@ -127,7 +127,7 @@ const Pagination = ({ page, totalPages, onPageChange }) => {
 
 
  return (
-   <div className="flex items-center justify-center gap-1.5 mt-8 pt-6 border-t border-gray-100">
+   <div className="library-pagination flex items-center justify-center gap-1.5 mt-8 pt-6 border-t border-gray-100">
      <NavBtn onClick={() => onPageChange(page - 1)} disabled={page === 1}>
        <ChevronLeft size={14} />
      </NavBtn>
@@ -135,7 +135,7 @@ const Pagination = ({ page, totalPages, onPageChange }) => {
 
      {getPages().map((p, i) =>
        p === null ? (
-         <span key={`e-${i}`} className="text-[13px] text-gray-300 w-8 text-center">
+         <span key={`e-${i}`} className="library-page-ellipsis text-[13px] text-gray-300 w-8 text-center">
            …
          </span>
        ) : (
@@ -143,7 +143,9 @@ const Pagination = ({ page, totalPages, onPageChange }) => {
            key={`p-${p}`}
            onClick={() => onPageChange(p)}
            className={`
-             w-8 h-8 rounded-lg text-[13px] font-bold transition-all duration-150 cursor-pointer
+             library-page-number w-8 h-8 shrink-0 rounded-lg text-[13px] font-bold transition-all duration-150 cursor-pointer
+             ${p === page ? "library-page-current" : ""}
+             ${p === 1 || p === totalPages ? "library-page-edge" : ""}
              ${p === page
                ? PRIMARY_BTN
                : "border border-gray-200 text-gray-500 hover:border-[#2C2DE0] hover:text-[#2C2DE0] bg-white"
@@ -202,8 +204,8 @@ const LibraryHome = () => {
  return (
    <div className="min-h-screen pb-8 bg-white">
      <div
-       style={{ maxWidth: "1440px", margin: "0 auto", padding: "20px 24px" }}
-       className="flex flex-col gap-7"
+       style={{ maxWidth: "1440px", margin: "0 auto" }}
+       className="w-full min-w-0 flex flex-col gap-7 px-3 py-4 sm:px-6 sm:py-5"
      >
 
 
@@ -370,6 +372,11 @@ const LibraryHome = () => {
      <style>{`
        @keyframes spin { to { transform: rotate(360deg); } }
        .animate-spin { animation: spin 1s linear infinite; }
+       @media (max-width: 639px) {
+         .library-pagination { gap: 4px; }
+         .library-pagination .library-page-ellipsis { display: none; }
+         .library-pagination .library-page-number:not(.library-page-current):not(.library-page-edge) { display: none; }
+       }
      `}</style>
    </div>
  );

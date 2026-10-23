@@ -130,11 +130,14 @@ const THEMES = {
 const useDevToolsDetection = () => {
   const [open, setOpen] = useState(false);
   useEffect(() => {
-    const check = () =>
-      setOpen(
+    const check = () => {
+      const isMobileViewport = window.innerWidth <= 900;
+      setOpen(!isMobileViewport && (
         window.outerWidth - window.innerWidth > 160 ||
         window.outerHeight - window.innerHeight > 160
-      );
+      ));
+    };
+    check();
     const iv = setInterval(check, 2000);
     window.addEventListener("resize", check);
     return () => { clearInterval(iv); window.removeEventListener("resize", check); };
@@ -526,6 +529,10 @@ const BookReader = () => {
   const [aiExpanded, setAiExpanded] = useState(false);
   const [showMobileAI, setShowMobileAI] = useState(false);
   const pdfContainerRef = useRef(null);
+  const touchStartRef = useRef(null);
+  const mobileAIButtonRef = useRef(null);
+  const mobileAICloseButtonRef = useRef(null);
+  const wasMobileAIOpenRef = useRef(false);
 
   // Floating top control cluster — hidden by default, revealed on mouse
   // movement near the top edge, auto-hides again after a short pause.
@@ -561,32 +568,29 @@ const BookReader = () => {
     document.addEventListener("cut", block);
     document.addEventListener("contextmenu", block);
     document.addEventListener("keydown", blockKey);
-    document.body.style.userSelect = "none";
-    document.body.style.webkitUserSelect = "none";
     return () => {
       document.removeEventListener("copy", block);
       document.removeEventListener("cut", block);
       document.removeEventListener("contextmenu", block);
       document.removeEventListener("keydown", blockKey);
-      document.body.style.userSelect = "";
-      document.body.style.webkitUserSelect = "";
     };
   }, []);
 
-  // Text selection for AI context
+  // Preserve PDF text selection and use it as optional AI context.
   useEffect(() => {
+    let selectionTimer;
     const handler = () => {
-      document.body.style.userSelect = "text";
-      document.body.style.webkitUserSelect = "text";
-      setTimeout(() => {
+      clearTimeout(selectionTimer);
+      selectionTimer = setTimeout(() => {
         const sel = window.getSelection()?.toString().trim();
         if (sel && sel.length > 5) setSelectedText(sel);
-        document.body.style.userSelect = "none";
-        document.body.style.webkitUserSelect = "none";
-      }, 10);
+      }, 0);
     };
     document.addEventListener("mouseup", handler);
-    return () => document.removeEventListener("mouseup", handler);
+    return () => {
+      clearTimeout(selectionTimer);
+      document.removeEventListener("mouseup", handler);
+    };
   }, []);
 
   // Save progress (debounced)
@@ -600,6 +604,27 @@ const BookReader = () => {
       }), 2500);
     return () => clearTimeout(t);
   }, [pageNumber, numPages]);
+
+  useEffect(() => {
+    if (showMobileAI) {
+      mobileAICloseButtonRef.current?.focus();
+    } else if (wasMobileAIOpenRef.current) {
+      mobileAIButtonRef.current?.focus();
+    }
+    wasMobileAIOpenRef.current = showMobileAI;
+  }, [showMobileAI]);
+
+  useEffect(() => {
+    if (!showMobileAI) return undefined;
+    const closeOnEscape = (event) => {
+      if (event.key === "Escape") {
+        event.stopPropagation();
+        setShowMobileAI(false);
+      }
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [showMobileAI]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -818,6 +843,35 @@ const BookReader = () => {
   const pct = numPages ? Math.round((pageNumber / numPages) * 100) : 0;
   const timeLeft = estimateTimeRemaining(pageNumber, numPages);
 
+  const handleReaderTouchStart = (event) => {
+    const touch = event.touches?.[0];
+    const container = pdfContainerRef.current;
+    if (event.touches?.length !== 1 || !touch || !container ||
+        container.scrollWidth > container.clientWidth + 1 ||
+        event.target.closest("button, input, textarea, select, a, [contenteditable='true']")) {
+      touchStartRef.current = null;
+      return;
+    }
+    touchStartRef.current = { x: touch.clientX, y: touch.clientY };
+  };
+
+  const handleReaderTouchEnd = (event) => {
+    const start = touchStartRef.current;
+    touchStartRef.current = null;
+    const touch = event.changedTouches?.[0];
+    if (!start || !touch) return;
+
+    const deltaX = touch.clientX - start.x;
+    const deltaY = touch.clientY - start.y;
+    if (
+      Math.abs(deltaX) < 48 ||
+      Math.abs(deltaX) < Math.abs(deltaY) * 1.25 ||
+      window.getSelection()?.toString()
+    ) return;
+
+    goTo(pageNumber + (deltaX < 0 ? 1 : -1));
+  };
+
   const toolBtn = (active = false, small = false) => ({
     width: small ? "30px" : "34px",
     height: small ? "30px" : "34px",
@@ -863,17 +917,23 @@ const BookReader = () => {
       <style>{`
         @keyframes spin     { to { transform: rotate(360deg); } }
         @keyframes fadeUp   { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+        @keyframes readerDrawerIn { from { transform: translateX(24px); opacity: 0.7; } to { transform: translateX(0); opacity: 1; } }
         ::-webkit-scrollbar { width: 4px; height: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: ${T.border}; border-radius: 8px; }
         ::-webkit-scrollbar-thumb:hover { background: ${T.textFaint}; }
         .react-pdf__Page__canvas { filter: ${T.pdfFilter} !important; display: block !important; }
-        .react-pdf__Page { user-select: none !important; -webkit-user-select: none !important; }
+        .react-pdf__Page { user-select: text !important; -webkit-user-select: text !important; }
         .react-pdf__Page__textContent.textLayer { opacity: 0.4; }
         .toolbar-btn:hover { background: ${T.hover} !important; }
         .page-animate { animation: fadeUp 0.22s ease forwards; }
         @supports (height: 100dvh) {
           .book-reader { height: 100dvh; }
+        }
+        .book-reader button:focus-visible,
+        .book-reader input:focus-visible {
+          outline: 3px solid ${T.accent};
+          outline-offset: 2px;
         }
         @media (max-width: 900px) {
           .reader-floating-toolbar {
@@ -887,38 +947,93 @@ const BookReader = () => {
           .reader-book-title, .reader-note-indicator { display: none !important; }
           .reader-pdf-container {
             padding: 64px 8px 16px !important;
-            touch-action: pan-x pan-y pinch-zoom;
+            touch-action: pan-y pinch-zoom;
+          }
+          .reader-pdf-container .react-pdf__Page { max-width: 100%; }
+          .reader-pdf-container .react-pdf__Page__canvas {
+            max-width: 100% !important;
+            height: auto !important;
+          }
+          .reader-zoom-controls,
+          .reader-page-controls,
+          .reader-keyboard-hint {
+            display: none !important;
           }
           .reader-ai-panel { display: none !important; }
           .reader-ai-panel-open {
             display: flex !important;
             position: fixed !important;
-            inset: 0 0 0 auto !important;
-            width: min(100vw, 420px) !important;
-            height: 100dvh !important;
-            flex: 0 0 min(100vw, 420px) !important;
+            inset: env(safe-area-inset-top) 0 0 auto !important;
+            width: min(420px, 100vw) !important;
             min-width: 0 !important;
             max-width: 100vw !important;
             z-index: 45 !important;
             box-shadow: -12px 0 36px rgba(0,0,0,0.24);
+            animation: readerDrawerIn 0.22s cubic-bezier(0.16,1,0.3,1);
+          }
+          .reader-ai-panel-open .library-tutor-panel > div:last-of-type {
+            padding-bottom: calc(12px + env(safe-area-inset-bottom)) !important;
           }
           .reader-ai-panel-open .reader-mobile-ai-close { display: flex !important; }
-          .reader-mobile-ai-backdrop { display: block !important; }
-          .reader-bottom-toolbar {
-            display: grid !important;
-            grid-template-areas: "pages assistant" "zoom progress";
-            grid-template-columns: minmax(0, 1fr) auto;
-            gap: 4px 8px;
-            height: auto !important;
-            min-height: 88px;
-            padding: 6px 8px calc(6px + env(safe-area-inset-bottom)) !important;
+          .reader-mobile-ai-backdrop {
+            display: block !important;
+            position: fixed !important;
+            inset: 0 !important;
+            z-index: 44 !important;
           }
-          .reader-zoom-controls { grid-area: zoom; gap: 2px !important; }
-          .reader-page-controls { grid-area: pages; justify-content: flex-start !important; gap: 4px !important; }
-          .reader-page-number { gap: 3px !important; padding: 4px 6px !important; }
-          .reader-keyboard-hint, .reader-time-left { display: none !important; }
-          .reader-progress-controls { grid-area: progress; justify-self: end; }
-          .reader-mobile-ai-button { display: flex !important; grid-area: assistant; }
+          .reader-bottom-toolbar.reader-bottom-toolbar-ai-open {
+            display: none !important;
+            height: 0 !important;
+            min-height: 0 !important;
+            padding: 0 !important;
+            border: 0 !important;
+            background: transparent !important;
+            box-shadow: none !important;
+          }
+          .reader-bottom-toolbar {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: space-between !important;
+            height: auto !important;
+            min-height: 60px;
+            gap: 8px;
+            padding: 8px 12px calc(8px + env(safe-area-inset-bottom)) !important;
+            position: relative;
+            z-index: 46;
+          }
+          .reader-mobile-ai-button {
+            width: 44px !important;
+            height: 44px !important;
+            min-width: 44px;
+            min-height: 44px;
+            margin-left: auto;
+            background: ${T.surface} !important;
+            border-color: ${T.border} !important;
+            color: ${T.accent} !important;
+            box-shadow: ${T.shadow} !important;
+          }
+          .reader-time-left { display: none !important; }
+          .reader-progress-controls {
+            order: 0;
+            justify-self: start;
+            margin-right: auto;
+          }
+          .reader-mobile-ai-button { display: flex !important; order: 1; }
+        }
+        @media (max-width: 360px) {
+          .reader-bottom-toolbar { padding-left: 8px !important; padding-right: 8px !important; }
+          .reader-progress-controls { gap: 4px !important; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .book-reader *,
+          .book-reader *::before,
+          .book-reader *::after {
+            scroll-behavior: auto !important;
+            animation-duration: 0.01ms !important;
+            animation-iteration-count: 1 !important;
+            transition-duration: 0.01ms !important;
+          }
+          .reader-ai-panel-open { animation: none !important; }
         }
         @media (max-width: 380px) {
           .reader-listen-button { display: none !important; }
@@ -1063,7 +1178,13 @@ const BookReader = () => {
         />
 
         {/* Center — PDF reading area */}
-        <div ref={pdfContainerRef} className="reader-pdf-container" style={{
+        <div
+          ref={pdfContainerRef}
+          className="reader-pdf-container"
+          onTouchStart={handleReaderTouchStart}
+          onTouchEnd={handleReaderTouchEnd}
+          onTouchCancel={() => { touchStartRef.current = null; }}
+          style={{
           flex: "1 1 0%", minWidth: 0, overflow: "auto", background: T.pdfBg,
           display: "flex", flexDirection: "column", alignItems: "center",
           padding: "36px 24px 48px",
@@ -1127,27 +1248,37 @@ const BookReader = () => {
             Sized in vw so "maximize" genuinely claims a big, stable share of
             the screen instead of a small fixed pixel column. */}
         {showMobileAI && (
-          <button
-            type="button"
-            aria-label="Close AI tutor"
+          <div
+            aria-hidden="true"
             className="reader-mobile-ai-backdrop"
             onClick={() => setShowMobileAI(false)}
             style={{ display: "none", position: "fixed", inset: 0, zIndex: 44, border: 0, background: "rgba(0,0,0,0.35)" }}
           />
         )}
-        <div className={showMobileAI ? "reader-ai-panel reader-ai-panel-open" : "reader-ai-panel"} style={{
-          flex: aiExpanded ? "0 0 42vw" : "0 0 25vw",
-          minWidth: aiExpanded ? "460px" : "300px",
-          maxWidth: aiExpanded ? "760px" : "400px",
-          overflow: "hidden", display: "flex", flexDirection: "column",
-          borderLeft: `1px solid ${T.aiPanelBorder}`,
-          transition: "flex-basis 0.25s cubic-bezier(0.16,1,0.3,1), min-width 0.25s ease, max-width 0.25s ease",
-        }}>
+        <div
+          className={showMobileAI ? "reader-ai-panel reader-ai-panel-open" : "reader-ai-panel"}
+          role={showMobileAI ? "dialog" : undefined}
+          aria-modal={showMobileAI ? true : undefined}
+          aria-label={showMobileAI ? "Library Tutor" : undefined}
+          tabIndex={showMobileAI ? -1 : undefined}
+          onTouchStart={(event) => event.stopPropagation()}
+          onTouchMove={(event) => event.stopPropagation()}
+          onTouchEnd={(event) => event.stopPropagation()}
+          style={{
+            flex: aiExpanded ? "0 0 42vw" : "0 0 25vw",
+            minWidth: aiExpanded ? "460px" : "300px",
+            maxWidth: aiExpanded ? "760px" : "400px",
+            overflow: "hidden", display: "flex", flexDirection: "column",
+            minHeight: 0,
+            borderLeft: `1px solid ${T.aiPanelBorder}`,
+            transition: "flex-basis 0.25s cubic-bezier(0.16,1,0.3,1), min-width 0.25s ease, max-width 0.25s ease",
+          }}>
           {showMobileAI && (
             <button
               type="button"
               aria-label="Close AI tutor"
               className="reader-mobile-ai-close"
+              ref={mobileAICloseButtonRef}
               onClick={() => setShowMobileAI(false)}
               style={{ display: "none", alignItems: "center", justifyContent: "center", alignSelf: "flex-end", width: "36px", height: "36px", margin: "8px", border: `1px solid ${T.border}`, borderRadius: "9px", background: T.surface, color: T.text, cursor: "pointer", flexShrink: 0 }}
             >
@@ -1170,7 +1301,7 @@ const BookReader = () => {
       </div>
 
       {/* ── BOTTOM TOOLBAR — always visible: page nav, zoom, progress ── */}
-      <div className="reader-bottom-toolbar" style={{
+      <div className={`reader-bottom-toolbar${showMobileAI ? " reader-bottom-toolbar-ai-open" : ""}`} style={{
         display: "flex", alignItems: "center", justifyContent: "space-between",
         padding: "0 18px", height: "50px",
         background: T.toolbar, borderTop: `1px solid ${T.toolbarBorder}`,
@@ -1188,19 +1319,19 @@ const BookReader = () => {
 
         {/* Page navigation */}
         <div className="reader-page-controls" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <button className="bg-[#2C2DE0] text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150 group" onClick={() => goTo(pageNumber - 1)} disabled={pageNumber <= 1}
+          <button aria-label="Previous page" className="bg-[#2C2DE0] text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150 group" onClick={() => goTo(pageNumber - 1)} disabled={pageNumber <= 1}
             style={{ ...toolBtn(), opacity: pageNumber <= 1 ? 0.3 : 1, cursor: pageNumber <= 1 ? "not-allowed" : "pointer" }}>
             <ChevronLeft size={16} />
           </button>
           <div className="reader-page-number" style={{ display: "flex", alignItems: "center", gap: "6px", padding: "6px 14px", background: T.surface, border: `1px solid ${T.border}`, borderRadius: "10px" }}>
-            <input type="number" value={pageNumber} min={1} max={numPages ?? 1}
+            <input type="number" aria-label="Current page" value={pageNumber} min={1} max={numPages ?? 1}
               onChange={e => goTo(Number(e.target.value))}
               style={{ width: "38px", textAlign: "center", background: "transparent", border: "none", outline: "none", fontSize: "13px", fontWeight: 700, color: T.text, fontVariantNumeric: "tabular-nums" }}
             />
             <span style={{ fontSize: "12px", color: T.textFaint }}>/</span>
             <span style={{ fontSize: "12.5px", fontWeight: 500, color: T.textMuted }}>{numPages ?? "—"}</span>
           </div>
-          <button className="bg-[#2C2DE0] text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150 group" onClick={() => goTo(pageNumber + 1)} disabled={!numPages || pageNumber >= numPages}
+          <button aria-label="Next page" className="bg-[#2C2DE0] text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150 group" onClick={() => goTo(pageNumber + 1)} disabled={!numPages || pageNumber >= numPages}
             style={{ ...toolBtn(), opacity: (!numPages || pageNumber >= numPages) ? 0.3 : 1, cursor: (!numPages || pageNumber >= numPages) ? "not-allowed" : "pointer" }}>
             <ChevronRight size={16} />
           </button>
@@ -1224,7 +1355,15 @@ const BookReader = () => {
               <Clock size={11} /> {timeLeft}
             </span>
           )}
-          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+          <div
+            role="progressbar"
+            aria-label="Reading progress"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={pct}
+            aria-valuetext={`Page ${pageNumber} of ${numPages ?? "unknown"}, ${pct}%`}
+            style={{ display: "flex", alignItems: "center", gap: "6px" }}
+          >
             <div style={{ width: "64px", height: "3px", background: T.border, borderRadius: "2px", overflow: "hidden" }}>
               <div style={{ height: "100%", width: `${pct}%`, background: T.accent, borderRadius: "2px", transition: "width 0.5s ease" }} />
             </div>
@@ -1236,6 +1375,7 @@ const BookReader = () => {
           aria-label={showMobileAI ? "Close AI tutor" : "Open AI tutor"}
           aria-expanded={showMobileAI}
           className="reader-mobile-ai-button"
+          ref={mobileAIButtonRef}
           onClick={() => setShowMobileAI((isOpen) => !isOpen)}
           style={{ ...toolBtn(showMobileAI, true), display: "none" }}
         >

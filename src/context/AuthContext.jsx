@@ -69,15 +69,12 @@ const AuthProvider = ({ children }) => {
   };
 
   const logout = async () => {
-    // clear guest marker too
+    if (user?.role !== "guest") {
+      await api.post("/auth/logout", {}, { withCredentials: true });
+    }
     localStorage.removeItem("guestUser");
     setAccessToken(null);
     setUser(null);
-    try {
-      await api.post("/auth/logout", {}, { withCredentials: true });
-    } catch (err) {
-      console.error("Logout error:", err);
-    }
   };
 
   const updateUser = (userData) => {

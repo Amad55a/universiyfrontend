@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion as Motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { ChevronDown, PanelLeftClose, PanelLeft } from "lucide-react";
 import { SIDEBAR_SECTIONS, resolveSidebarLabel } from "@/admin/config/sidebarConfig";
 import { useLanguage } from "@/hooks/useLanguage";
@@ -43,15 +43,15 @@ const SidebarNavItem = ({
           {!collapsed && (
             <>
               <span className="flex-1 text-left truncate">{label}</span>
-              <motion.span animate={{ rotate: isExpanded ? 180 : 0 }}>
+              <Motion.span animate={{ rotate: isExpanded ? 180 : 0 }}>
                 <ChevronDown size={16} />
-              </motion.span>
+              </Motion.span>
             </>
           )}
         </button>
         <AnimatePresence initial={false}>
           {isExpanded && !collapsed && (
-            <motion.div
+            <Motion.div
               initial={{ height: 0, opacity: 0 }}
               animate={{ height: "auto", opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
@@ -71,7 +71,7 @@ const SidebarNavItem = ({
                   />
                 ))}
               </div>
-            </motion.div>
+            </Motion.div>
           )}
         </AnimatePresence>
       </div>
@@ -94,7 +94,7 @@ const SidebarNavItem = ({
       {({ isActive: active }) => (
         <>
           {active && (
-            <motion.span
+            <Motion.span
               layoutId="admin-sidebar-active"
               className="absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-[#2C2DE0]"
             />
@@ -114,11 +114,26 @@ const Sidebar = ({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile }) => 
   const sidebarT = ap.sidebar;
   const [expandedMenus, setExpandedMenus] = useState(new Set(["books"]));
   const location = useLocation();
+  const reduceMotion = useReducedMotion();
   const showBrand = !collapsed || mobileOpen;
 
   useEffect(() => {
     onCloseMobile?.();
   }, [location.pathname, onCloseMobile]);
+
+  useEffect(() => {
+    if (!mobileOpen) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") onCloseMobile?.();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [mobileOpen, onCloseMobile]);
 
   const toggleMenu = (id) => {
     setExpandedMenus((prev) => {
@@ -190,20 +205,22 @@ const Sidebar = ({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile }) => 
     <>
       <AnimatePresence>
         {mobileOpen && (
-          <motion.div
+          <Motion.button
+            type="button"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm lg:hidden"
+            className="fixed inset-x-0 bottom-0 top-14 z-40 cursor-default border-0 bg-black/50 p-0 backdrop-blur-sm lg:hidden"
             onClick={onCloseMobile}
+            aria-label={ap.sidebar.closeMenu}
           />
         )}
       </AnimatePresence>
 
-      <motion.aside
+      <Motion.aside
         initial={false}
         animate={{ width: collapsed ? 72 : 260 }}
-        transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+        transition={{ duration: reduceMotion ? 0 : 0.25, ease: [0.22, 1, 0.36, 1] }}
         className={cn(
           "hidden lg:flex flex-col shrink-0 h-screen sticky top-0 z-30",
           "border-r border-gray-200/60 dark:border-white/10",
@@ -211,23 +228,28 @@ const Sidebar = ({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile }) => 
         )}
       >
         {sidebarContent}
-      </motion.aside>
+      </Motion.aside>
 
       <AnimatePresence>
         {mobileOpen && (
-          <motion.aside
+          <Motion.aside
             initial={{ x: -280 }}
             animate={{ x: 0 }}
             exit={{ x: -280 }}
-            transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ duration: reduceMotion ? 0 : 0.25, ease: [0.22, 1, 0.36, 1] }}
             className={cn(
-              "fixed left-0 top-0 z-50 h-full w-[260px] flex flex-col lg:hidden",
+              "fixed bottom-0 left-0 top-14 z-50 h-auto w-[260px] flex flex-col lg:hidden",
               "border-r border-gray-200/60 dark:border-white/10",
               "bg-white/95 dark:bg-gray-950/95 backdrop-blur-xl shadow-2xl"
             )}
+            id="admin-mobile-navigation"
+            aria-modal="true"
+            role="dialog"
+            aria-label={sidebarT.navigation || "Admin navigation"}
+            onClick={(event) => event.stopPropagation()}
           >
             {sidebarContent}
-          </motion.aside>
+          </Motion.aside>
         )}
       </AnimatePresence>
     </>

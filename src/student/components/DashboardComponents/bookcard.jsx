@@ -164,7 +164,7 @@ const BookCard = ({ book, isSaved, onToggleSave, size = "md" }) => {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       className={`
-        relative flex flex-col rounded-xl overflow-hidden cursor-pointer bg-white
+        relative flex min-w-0 flex-col rounded-xl overflow-hidden cursor-pointer bg-white
         transition-all duration-200 ease-out
         ${hovered
           ? "border-2 border-[#2C2DE0] shadow-lg shadow-[#2C2DE0]/10 -translate-y-0.5"
@@ -255,8 +255,8 @@ const BookCard = ({ book, isSaved, onToggleSave, size = "md" }) => {
           onClick={handleRead}
           disabled={!canRead}
           className={`
-            flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl
-            text-xs font-bold outline-none
+            min-w-0 flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl
+            text-[11px] sm:text-xs font-bold outline-none
             ${canRead
               ? `${PRIMARY_BTN} cursor-pointer`
               : "bg-gray-100 text-gray-400 cursor-not-allowed"
@@ -264,9 +264,11 @@ const BookCard = ({ book, isSaved, onToggleSave, size = "md" }) => {
           `}
         >
           <BookOpen size={11} />
-          {canRead
-            ? (t["book.read"] ?? "Read Online")
-            : (t["book.physical"] ?? "Print Only")}
+          <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
+            {canRead
+              ? (t["book.read"] ?? "Read Online")
+              : (t["book.physical"] ?? "Print Only")}
+          </span>
         </button>
 
         <button

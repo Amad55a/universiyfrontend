@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Sparkles, Send, X, RefreshCw, Zap } from "lucide-react";
+import { Sparkles, Send, RefreshCw, Zap } from "lucide-react";
 import api from "@/api/client";
-import { toast } from "sonner";
+import InteractiveQuiz from "./InteractiveQuiz";
 
 const QUICK_ACTIONS = [
   { id: "summarize", label: "📝 Summarize Meeting", prompt: "Please summarize the key points discussed in this class meeting so far. Be concise and use bullet points." },
   { id: "notes", label: "📋 Generate Notes", prompt: "Generate well-structured class notes based on a university computer science lecture. Include headings, key concepts, and examples." },
   { id: "explain", label: "💡 Explain Last Topic", prompt: "Explain the last topic discussed in this lecture in simple terms that are easy for students to understand." },
   { id: "translate", label: "🌐 Translate Summary", prompt: "Translate the meeting summary into Arabic for students who prefer Arabic." },
-  { id: "quiz", label: "🎯 Create Quick Quiz", prompt: "Generate 5 multiple-choice questions based on common computer science topics. Include answers." },
+  { id: "quiz", label: "🎯 Create Quick Quiz" },
 ];
 
 function TypingDots() {
@@ -47,7 +47,7 @@ function ChatBubble({ msg }) {
   );
 }
 
-export function AIAssistant({ meetingTitle, course, onClose }) {
+export function AIAssistant({ meetingTitle, course }) {
   const [messages, setMessages] = useState([
     {
       role: "ai",
@@ -56,6 +56,11 @@ export function AIAssistant({ meetingTitle, course, onClose }) {
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [quizMode, setQuizMode] = useState(false);
+  const [quizSource, setQuizSource] = useState("");
+  const [quizLoading, setQuizLoading] = useState(false);
+  const [quizError, setQuizError] = useState("");
+  const [activeQuiz, setActiveQuiz] = useState(null);
   const chatEndRef = useRef(null);
 
   useEffect(() => {
@@ -97,6 +102,52 @@ Be concise, friendly, and academically accurate. Format responses with markdown 
     }
   };
 
+  const generateQuiz = async () => {
+    const sourceContent = quizSource.trim();
+    if (sourceContent.length < 30 || quizLoading) return;
+    setQuizError("");
+    setQuizLoading(true);
+    try {
+      const { data } = await api.post("/ai/quiz/generate", {
+        sourceContent,
+        meetingTitle,
+        course,
+      });
+      const validQuestions = Array.isArray(data?.questions)
+        && data.questions.length === 5
+        && data.questions.every((question) =>
+          typeof question.id === "string"
+          && typeof question.question === "string"
+          && question.question.trim()
+          && Array.isArray(question.options)
+          && question.options.length === 4
+          && question.options.every((option) => typeof option === "string" && option.trim())
+          && !Object.hasOwn(question, "correctIndex")
+          && !Object.hasOwn(question, "explanation")
+        );
+      if (!data?.quizId || data.pointsPerQuestion !== 3 || !validQuestions) {
+        throw new Error("The quiz service returned an invalid quiz. Please retry.");
+      }
+      setActiveQuiz(data);
+      setQuizMode(false);
+    } catch (err) {
+      setQuizError(err?.response?.data?.message ?? err.message ?? "Quiz generation failed. Please retry.");
+    } finally {
+      setQuizLoading(false);
+    }
+  };
+
+  const handleQuickAction = (action) => {
+    if (action.id === "quiz") {
+      setQuizMode(true);
+      setQuizSource("");
+      setQuizError("");
+      setActiveQuiz(null);
+      return;
+    }
+    sendMessage(action.prompt);
+  };
+
   const clearChat = () => {
     setMessages([{
       role: "ai",
@@ -112,9 +163,16 @@ Be concise, friendly, and academically accurate. Format responses with markdown 
           <div className="w-7 h-7 rounded-full bg-[#2C2DE0] flex items-center justify-center">
             <Sparkles size={13} className="text-black" />
           </div>
-          <div>
-            <p className="text-white text-xs font-bold">Unicore Ai</p>
-          </div>
+          <div><p className="text-white text-xs font-bold">Unicore Ai</p></div>
+          {activeQuiz && (
+            <button
+              type="button"
+              onClick={() => { setActiveQuiz(null); setQuizMode(false); }}
+              className="ml-2 rounded-md border border-white/20 px-2 py-1 text-[10px] text-white/70 hover:text-white"
+            >
+              Back to assistant
+            </button>
+          )}
         </div>
         <button
           onClick={clearChat}
@@ -125,15 +183,14 @@ Be concise, friendly, and academically accurate. Format responses with markdown 
         </button>
       </div>
 
-      {/* Quick action buttons */}
-      <div className="p-2 border-b border-white/10 shrink-0 bg-black/80">
+      {!activeQuiz && !quizMode && <div className="p-2 border-b border-white/10 shrink-0 bg-black/80">
         <p className="text-[9px] font-black text-white/40 uppercase tracking-widest mb-1.5 px-1">Quick actions</p>
         <div className="grid grid-cols-1 gap-1">
           {QUICK_ACTIONS.map((a) => (
             <button
               key={a.id}
-              onClick={() => sendMessage(a.prompt)}
-              disabled={loading}
+              onClick={() => handleQuickAction(a)}
+              disabled={loading || quizLoading}
               className="text-left px-2.5 py-1.5 rounded-xl bg-[#2C2DE0]/10 hover:bg-[#2C2DE0]/20 border border-[#2C2DE0]/30 text-white/80 hover:text-white text-[11px] font-semibold transition-all disabled:opacity-50 flex items-center gap-2"
             >
               <Zap size={10} className="text-[#2C2DE0] shrink-0" />
@@ -141,9 +198,66 @@ Be concise, friendly, and academically accurate. Format responses with markdown 
             </button>
           ))}
         </div>
-      </div>
+      </div>}
 
       {/* Messages */}
+      {activeQuiz ? (
+        <div className="flex-1 min-h-0 overflow-y-auto p-3">
+          <InteractiveQuiz
+            quiz={activeQuiz}
+            onCreateAnother={() => {
+              setActiveQuiz(null);
+              setQuizSource("");
+              setQuizError("");
+              setQuizMode(true);
+            }}
+          />
+        </div>
+      ) : quizMode ? (
+        <div className="flex-1 min-h-0 overflow-y-auto p-3">
+          <form
+            className="flex flex-col gap-3 rounded-xl border border-white/15 bg-gray-950 p-4 text-white"
+            onSubmit={(event) => { event.preventDefault(); generateQuiz(); }}
+          >
+            <div>
+              <h3 className="text-sm font-bold">Create a quiz from class material</h3>
+              <p className="mt-1 text-xs leading-relaxed text-white/60">
+                Paste lecture notes or meeting material. Questions are grounded only in the text you provide.
+                {course ? ` Course: ${course}.` : ""}{meetingTitle ? ` Meeting: ${meetingTitle}.` : ""}
+              </p>
+            </div>
+            <textarea
+              value={quizSource}
+              onChange={(event) => setQuizSource(event.target.value.slice(0, 12000))}
+              rows={8}
+              maxLength={12000}
+              placeholder="Paste at least 30 characters of notes or source material…"
+              aria-label="Quiz source material"
+              disabled={quizLoading}
+              className="w-full resize-y rounded-lg border border-white/20 bg-gray-900 p-3 text-xs leading-relaxed text-white placeholder:text-white/40 focus:border-[#2C2DE0] focus:outline-none"
+            />
+            <p className="text-right text-[10px] text-white/45">{quizSource.trim().length}/12000</p>
+            {quizError && <p role="alert" className="text-xs text-red-300">{quizError}</p>}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => { setQuizMode(false); setQuizError(""); }}
+                disabled={quizLoading}
+                className="rounded-lg border border-white/20 px-3 py-2 text-xs text-white/75 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={quizLoading || quizSource.trim().length < 30}
+                className="ml-auto rounded-lg bg-[#2C2DE0] px-4 py-2 text-xs font-bold text-white disabled:opacity-40"
+              >
+                {quizLoading ? "Generating…" : quizError ? "Retry generation" : "Generate quiz"}
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : (
       <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3 bg-black">
         {messages.map((m, i) => <ChatBubble key={i} msg={m} />)}
         {loading && (
@@ -156,9 +270,10 @@ Be concise, friendly, and academically accurate. Format responses with markdown 
         )}
         <div ref={chatEndRef} />
       </div>
+      )}
 
       {/* Input */}
-      <div className="p-3 border-t border-white/10 shrink-0 flex gap-2 bg-black/90">
+      {!activeQuiz && !quizMode && <div className="p-3 border-t border-white/10 shrink-0 flex gap-2 bg-black/90">
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
@@ -174,7 +289,7 @@ Be concise, friendly, and academically accurate. Format responses with markdown 
         >
           <Send size={14} />
         </button>
-      </div>
+      </div>}
     </div>
   );
 }

@@ -96,8 +96,14 @@ export const useSocketSync = () => {
                     ? data.reason || "Your account has been banned. Contact support."
                     : "Your account has been suspended.";
 
-            try { queryClient.clear(); } catch (_) {}
-            try { logout(); } catch (_) {}
+            try {
+                queryClient.clear();
+            } catch (error) {
+                console.error("[useSocketSync] failed to clear cached user data", error);
+            }
+            void logout().catch((error) => {
+                console.error("[useSocketSync] session invalidation failed", error);
+            });
             toast.error(message);
             navigate("/login", { replace: true, state: { accountStatusMessage: message } });
         };

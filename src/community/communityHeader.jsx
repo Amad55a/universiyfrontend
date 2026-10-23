@@ -9,6 +9,7 @@ import { useLanguage } from "@/hooks/useLanguage";
 import { Avatar } from "./ui";
 import UnicoreLogo from "@/FrontDoorSystem/components/Logo";
 import NotificationPanel from "@/components/NotificationPanel";
+import { toast } from "sonner";
 
 const CommunityHeader = ({ onWritePost, notificationCount = 0 }) => {
   const { user, logout } = useAuth();
@@ -56,8 +57,13 @@ const CommunityHeader = ({ onWritePost, notificationCount = 0 }) => {
 
   const handleLogout = async () => {
     setProfileOpen(false);
-    await logout();
-    navigate("/login");
+    try {
+      await logout();
+      navigate("/login", { replace: true });
+    } catch (error) {
+      console.error("[CommunityHeader] logout failed", error);
+      toast.error(t["nav.logoutError"] ?? "Unable to sign out. Please try again.");
+    }
   };
 
   return (
