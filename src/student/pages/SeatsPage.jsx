@@ -9,7 +9,7 @@ import { DateTime } from "luxon";
 import ReservationModal from "@/student/components/ReservationModal";
 
 import { useLanguage } from "@/hooks/useLanguage";
-import { RefreshCw, ChevronLeft, ChevronRight, Clock, Armchair } from "lucide-react";
+import { RefreshCw, ChevronLeft, ChevronRight, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { useUniversityVerification } from "@/hooks/useUniversityVerification";
 import { sectionWrap } from "@/shared/constants/surfaces";
