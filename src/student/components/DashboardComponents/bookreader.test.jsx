@@ -1,17 +1,18 @@
 import React from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useQuery } from "@tanstack/react-query";
 import BookReader from "./bookreader";
+import { extractPdfHeadings } from "./bookreader-utils";
 
 const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
   pdf: {
     numPages: 3,
     getOutline: vi.fn().mockResolvedValue([]),
-    getPage: vi.fn().mockResolvedValue({
-      getViewport: () => ({ width: 612 }),
-    }),
+    getPage: vi.fn(),
+    getPageIndex: vi.fn().mockResolvedValue(1),
+    textByPage: {},
   },
 }));
 
@@ -78,6 +79,11 @@ vi.mock("./AiPanel", () => ({
 describe("BookReader responsive controls", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.pdf.textByPage = {};
+    mocks.pdf.getPage.mockImplementation(async (pageNumber) => ({
+      getViewport: () => ({ width: 612, height: 792 }),
+      getTextContent: async () => ({ items: mocks.pdf.textByPage[pageNumber] ?? [] }),
+    }));
     useQuery.mockReturnValue({
       data: { title: "Test book", author: "Test author" },
       isLoading: false,
@@ -151,6 +157,78 @@ describe("BookReader responsive controls", () => {
     expect(screen.getByRole("progressbar", { name: "Reading progress" })).toHaveAttribute("aria-valuetext", "Page 2 of 3, 67%");
   });
 
+  it("keeps PDF outline entries and navigates to their resolved page", async () => {
+    mocks.pdf.getOutline.mockResolvedValueOnce([
+      { title: "Existing outline chapter", dest: [{ num: 1, gen: 0 }] },
+    ]);
+    const { container } = render(<BookReader />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open reading tools" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Existing outline chapter" }));
+
+    await waitFor(() => {
+      expect(mocks.pdf.getPageIndex).toHaveBeenCalledWith({ num: 1, gen: 0 });
+      expect(container.querySelector(".reader-page-number input")).toHaveValue(2);
+    });
+  });
+
+  it("uses extracted PDF headings when the embedded outline is missing and navigates to the source page", async () => {
+    mocks.pdf.getOutline.mockResolvedValueOnce([
+      { title: null, dest: {}, items: "malformed child outline" },
+      null,
+    ]);
+    mocks.pdf.textByPage[2] = [
+      { str: "Chapter 2: Safer Computing", height: 18, transform: [18, 0, 0, 18, 40, 730] },
+      { str: "The first paragraph of the chapter.", height: 10, transform: [10, 0, 0, 10, 40, 690] },
+      { str: "More body text appears below.", height: 10, transform: [10, 0, 0, 10, 40, 670] },
+    ];
+    const { container } = render(<BookReader />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open reading tools" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Chapter 2: Safer Computing" }));
+
+    expect(container.querySelector(".reader-page-number input")).toHaveValue(2);
+    expect(screen.getByRole("progressbar", { name: "Reading progress" })).toHaveAttribute("aria-valuenow", "67");
+  });
+
+  it("shows a clear unavailable message when the PDF has no outline or reliable headings", async () => {
+    const { container } = render(<BookReader />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open reading tools" }));
+
+    expect(await screen.findByText("Table of contents unavailable for this book.")).toBeInTheDocument();
+    expect(container.querySelector(".reader-pdf-container")).toHaveStyle({ overflow: "auto" });
+    const contentsTab = screen.getByRole("button", { name: "Contents" });
+    expect(contentsTab.style.borderBottom).not.toContain("#2C2DE0");
+    expect(contentsTab).not.toHaveClass("bg-[#2C2DE0]");
+  });
+
+  it("extracts only prominent, non-repeated PDF headings and keeps their actual page numbers", async () => {
+    const headings = await extractPdfHeadings({
+      numPages: 2,
+      getPage: async (pageNumber) => ({
+        getViewport: () => ({ height: 792 }),
+        getTextContent: async () => ({
+          items: pageNumber === 1
+            ? [
+                { str: "Chapter 1: Foundations", height: 18, transform: [18, 0, 0, 18, 40, 730] },
+                { str: "Ordinary text on the page.", height: 10, transform: [10, 0, 0, 10, 40, 690] },
+                { str: "More ordinary text.", height: 10, transform: [10, 0, 0, 10, 40, 670] },
+              ]
+            : [
+                { str: "Chapter 1: Foundations", height: 18, transform: [18, 0, 0, 18, 40, 730] },
+                { str: "Ordinary text on the page.", height: 10, transform: [10, 0, 0, 10, 40, 690] },
+                { str: "More ordinary text.", height: 10, transform: [10, 0, 0, 10, 40, 670] },
+              ],
+        }),
+      }),
+    });
+
+    expect(headings).toEqual([
+      { title: "Chapter 1: Foundations", dest: null, page: 1, depth: 0 },
+    ]);
+  });
+
   it("preserves the current page while opening and closing the AI drawer", async () => {
     const { container } = render(<BookReader />);
     const currentPage = await screen.findByRole("spinbutton", { name: "Current page" });
@@ -193,11 +271,16 @@ describe("BookReader responsive controls", () => {
   });
 
   it("turns pages on horizontal swipes but leaves vertical scrolling alone", async () => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
     const { container } = render(<BookReader />);
     const reader = container.querySelector(".reader-pdf-container");
     const currentPage = container.querySelector(".reader-page-number input");
 
     await screen.findByTestId("pdf-document");
+    expect(reader).toHaveStyle({ overflow: "auto" });
+    const readerStyles = document.querySelector(".book-reader style").textContent;
+    expect(readerStyles).toContain("touch-action: pan-y pinch-zoom");
+    expect(readerStyles).toContain("user-select: text !important");
     fireEvent.touchStart(reader, {
       touches: [{ identifier: 1, clientX: 220, clientY: 120 }],
     });

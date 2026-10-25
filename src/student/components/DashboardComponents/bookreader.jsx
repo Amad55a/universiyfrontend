@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { useBookReader, useNotes } from "@/hooks/usee-library";
 import AIPanel from "./AiPanel";
+import { extractPdfHeadings } from "./bookreader-utils";
 import pdfWorker from "pdfjs-dist/build/pdf.worker.min?url";
 import { useUniversityVerification } from "@/hooks/useUniversityVerification";
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
@@ -272,13 +273,12 @@ const LeftSidebar = ({ T, bookmarks, onNavigate, onRemoveBookmark, currentPage, 
         zIndex: 40,
         boxShadow: isOpen ? "8px 0 32px rgba(0,0,0,0.18)" : "none",
       }}>
-        <div style={{ display: "flex", alignItems: "center", borderBottom: `1px solid ${T.border}`, flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", flexShrink: 0 }}>
           {TABS.map(({ id, label, icon: Icon }) => (
-            <button className="bg-[#2C2DE0] text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150 group" key={id} onClick={() => setTab(id)} style={{
+            <button key={id} aria-pressed={tab === id} onClick={() => setTab(id)} style={{
               flex: 1, padding: "13px 4px", border: "none", cursor: "pointer",
-              background: "transparent",
-              color: tab === id ? T.accent : T.textFaint,
-              borderBottom: `2px solid ${tab === id ? T.accent : "transparent"}`,
+              background: tab === id ? T.surface : "transparent",
+              color: tab === id ? T.text : T.textFaint,
               transition: "all 0.15s",
               display: "flex", flexDirection: "column", alignItems: "center", gap: "4px",
               fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em",
@@ -287,7 +287,7 @@ const LeftSidebar = ({ T, bookmarks, onNavigate, onRemoveBookmark, currentPage, 
               {label}
             </button>
           ))}
-          <button className="bg-[#2C2DE0] text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150 group" onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: T.textFaint, padding: "0 12px", alignSelf: "stretch" }}>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: T.textFaint, padding: "0 12px", alignSelf: "stretch" }}>
             <X size={14} />
           </button>
         </div>
@@ -326,40 +326,46 @@ const LeftSidebar = ({ T, bookmarks, onNavigate, onRemoveBookmark, currentPage, 
                   Table of Contents
                 </p>
                 {filteredToc.length > 0 ? filteredToc.map((item, i) => (
-                  <button className="bg-[#2C2DE0] text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150 group" key={i}
+                  <button key={`${item.page ?? "outline"}-${i}`}
                     onClick={async () => {
-                      if (!pdfRef || !item.dest) return;
+                      if (!pdfRef || (!item.dest && !item.page)) return;
                       try {
+                        if (item.page) {
+                          onNavigate(item.page);
+                          return;
+                        }
                         let d = item.dest;
                         if (typeof d === "string") d = await pdfRef.getDestination(d);
                         if (!d?.[0]) return;
                         const pi = await pdfRef.getPageIndex(d[0]);
                         onNavigate(pi + 1);
-                      } catch { }
+                      } catch (error) {
+                        console.error("Unable to navigate to the selected table-of-contents entry.", error);
+                      }
                     }}
                     style={{
                       width: "100%", textAlign: "left",
                       padding: `7px ${8 + (item.depth || 0) * 12}px 7px 8px`,
-                      borderRadius: "7px", background: "transparent", border: "none",
-                      cursor: item.dest ? "pointer" : "default",
-                      opacity: item.dest ? 1 : 0.4,
+                      borderRadius: "7px", background: "transparent", border: "none", boxShadow: "none",
+                      cursor: item.dest || item.page ? "pointer" : "default",
+                      opacity: item.dest || item.page ? 1 : 0.4,
                       color: T.text, fontSize: item.depth === 0 ? "12.5px" : "12px",
                       fontWeight: item.depth === 0 ? 600 : 400,
                       lineHeight: 1.4,
                       display: "flex", alignItems: "center", gap: "7px",
                       transition: "background 0.12s",
                     }}
-                    onMouseEnter={e => { if (item.dest) e.currentTarget.style.background = T.hover; }}
+                    onMouseEnter={e => { if (item.dest || item.page) e.currentTarget.style.background = T.hover; }}
                     onMouseLeave={e => e.currentTarget.style.background = "transparent"}
                   >
-                    <span style={{ width: item.depth === 0 ? "5px" : "3px", height: item.depth === 0 ? "5px" : "3px", borderRadius: "50%", background: item.depth === 0 ? T.accent : T.textFaint, flexShrink: 0, display: "inline-block" }} />
+                    <span style={{ width: item.depth === 0 ? "5px" : "3px", height: item.depth === 0 ? "5px" : "3px", borderRadius: "50%", background: T.textFaint, flexShrink: 0, display: "inline-block" }} />
                     <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {item.title || "Untitled"}
                     </span>
                   </button>
                 )) : (
                   <p style={{ fontSize: "12px", color: T.textMuted, fontStyle: "italic", lineHeight: 1.6, padding: "4px 0" }}>
-                    {tocSearch ? "No matching sections." : "No table of contents available."}
+                    {tocSearch ? "No matching sections." : "Table of contents unavailable for this book."}
                   </p>
                 )}
               </div>
@@ -777,15 +783,43 @@ const BookReader = () => {
     setNumPages(pdf.numPages);
     setPdfError(false);
     setPdfRef(pdf);
+    setToc([]);
+
+    let outline = [];
     try {
-      const outline = await pdf.getOutline();
-      const flatten = (items = [], depth = 0) =>
-        items.flatMap(item => [
-          { title: item.title, dest: item.dest ?? null, depth },
-          ...flatten(item.items, depth + 1),
-        ]);
-      setToc(flatten(outline ?? []));
-    } catch { setToc([]); }
+      const items = await pdf.getOutline();
+      const flatten = (entries, depth = 0) => {
+        if (!Array.isArray(entries)) return [];
+        return entries.flatMap((item) => {
+          if (!item || typeof item !== "object") return [];
+          const title = typeof item.title === "string" ? item.title.trim() : "";
+          const hasDestination = typeof item.dest === "string"
+            ? item.dest.length > 0
+            : Array.isArray(item.dest) && item.dest.length > 0;
+          return [
+            ...(title && hasDestination
+              ? [{ title, dest: item.dest, depth }]
+              : []),
+            ...flatten(item.items, depth + 1),
+          ];
+        });
+      };
+      outline = flatten(items);
+    } catch (error) {
+      console.error("Unable to read the PDF table-of-contents outline.", error);
+    }
+
+    if (outline.length) {
+      setToc(outline);
+      return;
+    }
+
+    try {
+      setToc(await extractPdfHeadings(pdf));
+    } catch (error) {
+      console.error("Unable to generate a table of contents from PDF headings.", error);
+      setToc([]);
+    }
   }, []);
 
   useEffect(() => {
