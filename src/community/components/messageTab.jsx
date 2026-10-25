@@ -43,12 +43,14 @@ const AnnouncementComposer = ({ groupId, onSent }) => {
     const [links, setLinks] = useState({ meetingLink: "", whiteboardLink: "", codingLabLink: "", examLink: "" });
     const [attachments, setAttachments] = useState([]);
     const [sending, setSending] = useState(false);
+    const [error, setError] = useState("");
 
     const canPublish = Boolean(text.trim() || attachments.length || Object.values(links).some(Boolean));
 
     const handleSubmit = async () => {
         if (!canPublish) return;
         setSending(true);
+        setError("");
         try {
             const payload = { text, attachments, ...links };
             const res = await sendMessage(groupId, payload);
@@ -59,6 +61,8 @@ const AnnouncementComposer = ({ groupId, onSent }) => {
                 setOpen(false);
                 onSent?.(res.message);
             }
+        } catch (requestError) {
+            setError(requestError.response?.data?.message || "Message could not be sent. Try again.");
         } finally {
             setSending(false);
         }
@@ -84,6 +88,7 @@ const AnnouncementComposer = ({ groupId, onSent }) => {
                 className="w-full p-2 rounded-lg text-sm bg-black/5 dark:bg-white/5 text-black dark:text-white focus:outline-none"
                 autoFocus
             />
+            {error && <p role="alert" className="text-xs text-red-600 dark:text-red-400">{error}</p>}
             <RichTextHints />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {Object.keys(LINK_ICONS).map((key) => (
@@ -108,6 +113,50 @@ const AnnouncementComposer = ({ groupId, onSent }) => {
                 </button>
             </div>
         </div>
+    );
+};
+
+const MemberMessageComposer = ({ groupId, onSent }) => {
+    const [text, setText] = useState("");
+    const [sending, setSending] = useState(false);
+    const [error, setError] = useState("");
+
+    const handleSubmit = async (event) => {
+        event.preventDefault();
+        if (!text.trim() || sending) return;
+        setSending(true);
+        setError("");
+        try {
+            const res = await sendMessage(groupId, { text: text.trim() });
+            if (!res.success || !res.message) throw new Error(res.message || "Message could not be sent");
+            setText("");
+            onSent?.(res.message);
+        } catch (requestError) {
+            setError(requestError.response?.data?.message || requestError.message || "Message could not be sent. Try again.");
+        } finally {
+            setSending(false);
+        }
+    };
+
+    return (
+        <form onSubmit={handleSubmit} className="bg-white dark:bg-black border border-black/10 dark:border-white/10 rounded-xl p-4 space-y-2">
+            <label htmlFor="group-message" className="sr-only">Write a group message</label>
+            <textarea
+                id="group-message"
+                value={text}
+                onChange={(event) => setText(event.target.value)}
+                placeholder="Write a message to this group..."
+                maxLength={10000}
+                rows={3}
+                className="w-full p-2 rounded-lg text-sm bg-black/5 dark:bg-white/5 text-black dark:text-white focus:outline-none"
+            />
+            {error && <p role="alert" className="text-xs text-red-600 dark:text-red-400">{error}</p>}
+            <div className="flex justify-end">
+                <button type="submit" disabled={!text.trim() || sending} className={`px-4 py-1.5 rounded-lg ${BTN_PRIMARY}`}>
+                    {sending ? "Sending..." : "Send message"}
+                </button>
+            </div>
+        </form>
     );
 };
 
@@ -390,6 +439,7 @@ const AnnouncementCard = ({ message, groupId, canManage, canEditOwn, currentUser
 const MessagesTab = ({ groupId, group, membership, currentUserId, isUniversityAdmin }) => {
     const [messages, setMessages] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState("");
     const [requestOpen, setRequestOpen] = useState(false);
     const [editingMessage, setEditingMessage] = useState(null);
 
@@ -398,9 +448,13 @@ const MessagesTab = ({ groupId, group, membership, currentUserId, isUniversityAd
 
     const load = async () => {
         setLoading(true);
+        setLoadError("");
         try {
             const res = await getGroupMessages(groupId);
-            if (res.success) setMessages(res.messages);
+            if (!res.success) throw new Error(res.message || "Could not load group messages");
+            setMessages(Array.isArray(res.messages) ? res.messages : []);
+        } catch (error) {
+            setLoadError(error.response?.data?.message || error.message || "Could not load group messages.");
         } finally {
             setLoading(false);
         }
@@ -419,19 +473,26 @@ const MessagesTab = ({ groupId, group, membership, currentUserId, isUniversityAd
         }
     };
 
-    if (loading) return <Spinner />;
-
     return (
         <div className="space-y-4">
             {canSend ? (
-                <AnnouncementComposer groupId={groupId} onSent={(msg) => setMessages((prev) => [msg, ...prev])} />
+                <AnnouncementComposer groupId={groupId} onSent={(msg) => setMessages((prev) => [
+                    msg,
+                    ...prev.filter((current) => current._id !== msg._id),
+                ])} />
             ) : (
-                <button
-                    onClick={() => setRequestOpen(true)}
-                    className="w-full text-left bg-white dark:bg-black border border-black/10 dark:border-white/10 rounded-xl p-4 text-sm text-black/40 dark:text-white/40 hover:border-[#2C2DE0] transition-colors"
-                >
-                    Request to send a message...
-                </button>
+                <>
+                    <MemberMessageComposer
+                        groupId={groupId}
+                        onSent={(msg) => setMessages((prev) => [msg, ...prev.filter((current) => current._id !== msg._id)])}
+                    />
+                    <button
+                        onClick={() => setRequestOpen(true)}
+                        className="text-xs font-semibold text-black/50 dark:text-white/50 hover:text-[#2C2DE0]"
+                    >
+                        Request to publish an official announcement
+                    </button>
+                </>
             )}
 
             {requestOpen && (
@@ -451,7 +512,14 @@ const MessagesTab = ({ groupId, group, membership, currentUserId, isUniversityAd
                 />
             )}
 
-            {messages.map((m) => (
+            {loadError ? (
+                <div className="rounded-xl border border-red-200 dark:border-red-900 p-6 text-center">
+                    <p role="alert" className="text-sm text-red-700 dark:text-red-400 mb-3">{loadError}</p>
+                    <button onClick={load} className={`px-4 py-1.5 rounded-lg ${BTN_PRIMARY}`}>Retry loading messages</button>
+                </div>
+            ) : loading ? (
+                <div className="py-10"><Spinner /></div>
+            ) : messages.map((m) => (
                 <AnnouncementCard
                     key={m._id}
                     message={m}
@@ -463,7 +531,7 @@ const MessagesTab = ({ groupId, group, membership, currentUserId, isUniversityAd
                 />
             ))}
 
-            {!messages.length && (
+            {!loading && !loadError && !messages.length && (
                 <div className="text-center py-16">
                     <p className="text-sm text-black/40 dark:text-white/40">No announcements yet</p>
                 </div>

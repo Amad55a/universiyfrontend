@@ -20,6 +20,12 @@ const buildParams = ({ page = 1, limit = 10, search = "", ...filters } = {}) => 
 export const fetchAdminUsers = (params) =>
   api.get(`${ADMIN_BASE}/users`, { params: buildParams(params) });
 
+export const fetchAdminGroups = (params) =>
+  api.get(`${ADMIN_BASE}/groups`, { params: buildParams(params) });
+
+export const synchronizeAdminGroups = () =>
+  api.post(`${ADMIN_BASE}/groups/sync`);
+
 export const fetchAdminUser = (id) =>
   api.get(`${ADMIN_BASE}/users/${id}`);
 
