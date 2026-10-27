@@ -578,6 +578,7 @@ export default function MeetingRoom() {
 
   const [meeting, setMeeting] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadingMessage, setLoadingMessage] = useState("Joining room…");
   const [timer, setTimer] = useState(0);
   const [showSummary, setShowSummary] = useState(false);
   const [pinned, setPinned] = useState(null); // socketId
@@ -631,7 +632,8 @@ export default function MeetingRoom() {
     isHost,
   });
 
-  const triggerShowSummary = useCallback(() => {
+  const triggerShowSummary = useCallback((message = "Leaving meeting…") => {
+    setLoadingMessage(message);
     setLoading(true);
     setTimeout(async () => {
       try {
@@ -674,7 +676,7 @@ export default function MeetingRoom() {
       if (p?.meetingCode?.toUpperCase() === code?.toUpperCase()) {
         toast.info("Meeting ended by the host");
         webrtc.leaveRoom();
-        triggerShowSummary();
+        triggerShowSummary("Meeting ended. Preparing summary…");
       }
     });
     const onKicked = () => {
@@ -743,13 +745,13 @@ export default function MeetingRoom() {
     try {
       await endMeeting(meeting._id);
       webrtc.leaveRoom();
-      triggerShowSummary();
+      triggerShowSummary("Ending meeting…");
     } catch { toast.error("Failed to end meeting"); }
   };
 
   const handleLeave = () => {
     webrtc.leaveRoom();
-    triggerShowSummary();
+    triggerShowSummary("Leaving meeting…");
   };
 
   const handleToggleLock = async () => {
@@ -931,8 +933,15 @@ export default function MeetingRoom() {
   const pinnedTile = pinned ? allTiles.find((t) => t.socketId === pinned) : null;
 
   // Presenter should not have their own screen share fill their view by default
-  const shouldFocusScreen = screenTile && (!screenTile.isLocal || pinned === "local_screen");
-  const focusTile = shouldFocusScreen ? screenTile : pinnedTile || null;
+  const focusTile = screenTile || pinnedTile || null;
+  const focusOwnerSocketId = focusTile?.socketId === "local_screen"
+    ? "local"
+    : focusTile?.socketId?.endsWith("_screen")
+      ? focusTile.socketId.slice(0, -"_screen".length)
+      : null;
+  const focusOwnerCamera = focusOwnerSocketId
+    ? allTiles.find((tile) => tile.socketId === focusOwnerSocketId && tile.hasVideo)
+    : null;
 
   // Filter out local screen share from grid to prevent infinite mirroring
   const gridTiles = useMemo(() => {
@@ -943,24 +952,33 @@ export default function MeetingRoom() {
   // (including the presenter's) rides in one horizontal row underneath.
   const stripTiles = useMemo(() => {
     if (!focusTile) return [];
-    return allTiles.filter((t) => t.socketId !== focusTile.socketId && (t.socketId !== "local_screen" || pinned === "local_screen"));
+    const focusedOwnerId = focusTile.socketId === "local_screen"
+      ? "local"
+      : focusTile.socketId.endsWith("_screen")
+        ? focusTile.socketId.slice(0, -"_screen".length)
+        : null;
+    return allTiles.filter((t) =>
+      t.socketId !== focusTile.socketId
+      && t.socketId !== focusedOwnerId
+      && (t.socketId !== "local_screen" || pinned === "local_screen")
+    );
   }, [allTiles, focusTile, pinned]);
 
-  // Compute normal grid dimensions (1, 2, 2x2, 3x3, 4x4)
+  const visibleGridTiles = gridTiles.slice(0, 4);
+
+  // Keep the main stage to four predictable video tiles; all attendees remain
+  // available in the participant panel.
   const gridClass = useMemo(() => {
-    const count = gridTiles.length;
-    if (count <= 1) return "grid-cols-1 max-w-[800px] aspect-video mx-auto w-full";
-    if (count === 2) return "grid-cols-1 md:grid-cols-2 max-w-[1100px] mx-auto w-full";
-    if (count <= 4) return "grid-cols-2 max-w-[1100px] mx-auto w-full";
-    if (count <= 9) return "grid-cols-3 max-w-[1200px] mx-auto w-full";
-    return "grid-cols-4 max-w-[1300px] mx-auto w-full";
-  }, [gridTiles.length]);
+    return visibleGridTiles.length <= 1
+      ? "grid-cols-1 max-w-4xl"
+      : "grid-cols-1 sm:grid-cols-2 max-w-6xl";
+  }, [visibleGridTiles.length]);
 
   if (loading) {
     return (
       <div className="fixed inset-0 bg-black flex flex-col items-center justify-center z-50 gap-4">
         <Spinner size={36} className="text-[#2C2DE0]" />
-        <p className="text-white/50 text-sm font-semibold animate-pulse">Joining room…</p>
+        <p className="text-white/50 text-sm font-semibold animate-pulse">{loadingMessage}</p>
       </div>
     );
   }
@@ -1047,6 +1065,18 @@ export default function MeetingRoom() {
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* ── Video Area ────────────────────────────────────────────────────── */}
         <main className="flex-1 flex flex-col min-w-0 relative bg-gray-100 dark:bg-black overflow-hidden">
+          {webrtc.connectionError && (
+            <div role="alert" className="absolute left-1/2 top-4 z-30 flex max-w-[calc(100%-2rem)] -translate-x-1/2 items-center gap-3 rounded-xl border border-red-300 bg-white px-4 py-3 text-sm text-red-700 shadow-lg dark:border-red-900 dark:bg-[#111] dark:text-red-300">
+              <span>{webrtc.connectionError}</span>
+              <button
+                type="button"
+                onClick={webrtc.retryJoin}
+                className="shrink-0 rounded-lg border border-current px-3 py-1.5 text-xs font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2C2DE0]"
+              >
+                Retry
+              </button>
+            </div>
+          )}
           {/* Waiting banner */}
           {!meeting?.isActive && !isHost && (
             <div className="absolute inset-x-0 top-4 z-20 flex justify-center px-4">
@@ -1136,7 +1166,7 @@ export default function MeetingRoom() {
           {/* ── Layout Engine: Screen Sharing Focus Layout ── */}
           {focusTile ? (
             <div className="flex-1 flex flex-col p-4 gap-6 min-h-0 bg-gray-50 dark:bg-black/95">
-              <div className="flex-[2] min-h-0 max-h-[70%] relative mx-auto w-full">
+              <div className="relative mx-auto aspect-video max-h-[70%] min-h-0 w-full flex-[2]">
                 <VideoTile
                   stream={focusTile.stream}
                   pipStream={focusTile.pipStream}
@@ -1158,6 +1188,22 @@ export default function MeetingRoom() {
                   socketId={focusTile.socketId}
                   presenterId={webrtc.presenterId}
                 />
+                {focusOwnerCamera && (
+                  <div className="absolute left-3 top-3 z-20 aspect-video w-28 overflow-hidden rounded-xl border border-white/30 shadow-xl sm:w-44">
+                    <VideoTile
+                      compact
+                      stream={focusOwnerCamera.stream}
+                      name={focusOwnerCamera.name}
+                      photo={focusOwnerCamera.photo}
+                      role={focusOwnerCamera.role}
+                      muted={focusOwnerCamera.muted}
+                      isLocal={focusOwnerCamera.isLocal}
+                      isSpeaking={focusOwnerCamera.isSpeaking}
+                      socketId={focusOwnerCamera.socketId}
+                      presenterId={webrtc.presenterId}
+                    />
+                  </div>
+                )}
                 <button
                   onClick={() => {
                     setActiveTab("participants");
@@ -1186,19 +1232,16 @@ export default function MeetingRoom() {
                       ))}
                   </div>
                   <span className="text-white text-[11px] font-bold whitespace-nowrap">
-                    {allTiles.filter((t) => !t.isScreenSharing).length} in meeting
+                    {webrtc.participants.length} in meeting
                   </span>
                 </button>
               </div>
               <div className="h-px w-full bg-gray-200 dark:bg-white dark:bg-gray-900/10 shrink-0" />
-              <div
-                className="flex gap-3 overflow-x-auto shrink-0"
-                style={{ height: 190 }}
-              >
+              <div className="flex h-24 shrink-0 gap-3 overflow-x-auto sm:h-36">
                 {stripTiles.map((tile) => (
                   <div
                     key={tile.socketId}
-                    className="w-[220px] h-full shrink-0"
+                    className="h-full w-32 shrink-0 sm:w-48"
                   >
                     <VideoTile
                       compact
@@ -1231,47 +1274,42 @@ export default function MeetingRoom() {
           ) : (
 
             /* Normal meeting grid */
-
-            <div
-              className={`h-full p-4 grid gap-4 ${gridClass} justify-center items-center overflow-y-auto`}
-            >
-
-              {gridTiles.map((tile) => (
-
-                <VideoTile
-                  key={tile.socketId}
-
-                  stream={tile.stream}
-                  pipStream={tile.pipStream}
-
-                  name={tile.name}
-                  photo={tile.photo}
-                  role={tile.role}
-
-                  muted={tile.muted}
-                  isLocal={tile.isLocal}
-
-                  handRaised={tile.handRaised}
-
-                  isScreenSharing={tile.isScreenSharing}
-                  isSpeaking={tile.isSpeaking}
-
-                  isPinned={tile.socketId === pinned}
-
-                  onPin={() =>
-                    setPinned((p) =>
-                      p === tile.socketId ? null : tile.socketId
-                    )
-                  }
-
-                  universityId={tile.universityId}
-
-                  socketId={tile.socketId}
-                  presenterId={webrtc.presenterId}
-                />
-
-              ))}
-
+            <div className="relative flex-1 min-h-0 overflow-y-auto p-3 sm:p-5">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab("participants");
+                  setSidebarOpen(true);
+                }}
+                aria-label={`${webrtc.participants.length} participants. Open participant panel`}
+                className="absolute right-4 top-4 z-20 flex items-center gap-2 rounded-full border border-white/15 bg-black/80 px-3 py-2 text-xs font-bold text-white shadow-lg backdrop-blur-sm hover:bg-black focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2C2DE0]"
+              >
+                <Users size={15} />
+                <span>{webrtc.participants.length}</span>
+              </button>
+              <div className={`mx-auto grid h-full w-full auto-rows-max items-center justify-center gap-3 sm:gap-4 ${gridClass}`}>
+                {visibleGridTiles.map((tile) => (
+                  <div key={tile.socketId} className="relative aspect-video w-full min-w-0 overflow-hidden rounded-2xl">
+                    <VideoTile
+                      stream={tile.stream}
+                      pipStream={tile.pipStream}
+                      name={tile.name}
+                      photo={tile.photo}
+                      role={tile.role}
+                      muted={tile.muted}
+                      isLocal={tile.isLocal}
+                      handRaised={tile.handRaised}
+                      isScreenSharing={tile.isScreenSharing}
+                      isSpeaking={tile.isSpeaking}
+                      isPinned={tile.socketId === pinned}
+                      onPin={() => setPinned((current) => current === tile.socketId ? null : tile.socketId)}
+                      universityId={tile.universityId}
+                      socketId={tile.socketId}
+                      presenterId={webrtc.presenterId}
+                    />
+                  </div>
+                ))}
+              </div>
             </div>
 
           )}

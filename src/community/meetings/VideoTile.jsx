@@ -26,7 +26,7 @@
  */
 
 import React, { useEffect, useRef, useState, memo } from "react";
-import { Mic, MicOff, Hand, MonitorUp } from "lucide-react";
+import { Mic, MicOff, Hand, MonitorUp, Volume2 } from "lucide-react";
 import { getInitials, resolvePhoto } from "../ui";
 
 // Returns true if `a` and `b` are streams (or null) wrapping the exact same
@@ -92,6 +92,7 @@ export const VideoTile = memo(function VideoTile({
   const rafRef = useRef(null);
 
   const [localIsSpeaking, setLocalIsSpeaking] = useState(false);
+  const [playbackBlocked, setPlaybackBlocked] = useState(false);
   const isSpeaking = externalIsSpeaking || localIsSpeaking;
 
   const hasCameraOn =
@@ -105,9 +106,14 @@ export const VideoTile = memo(function VideoTile({
     if (sameTracks(videoRef.current.srcObject, stream)) return;
     videoRef.current.srcObject = stream ?? null;
     if (stream && videoRef.current.paused) {
-      videoRef.current.play().catch(e => console.warn("play blocked:", e));
+      videoRef.current.play()
+        .then(() => setPlaybackBlocked(false))
+        .catch((error) => {
+          if (!isLocal && stream.getAudioTracks().length) setPlaybackBlocked(true);
+          console.warn("Remote meeting playback blocked:", error);
+        });
     }
-  }, [stream]);
+  }, [stream, isLocal]);
 
   useEffect(() => {
     if (!pipRef.current) return;
@@ -224,10 +230,22 @@ export const VideoTile = memo(function VideoTile({
         autoPlay
         playsInline
         muted={isLocal}
-        className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${
+        className={`absolute inset-0 h-full w-full ${isScreenSharing ? "object-contain" : "object-cover"} transition-opacity duration-300 ${
           hasLiveVideo ? "opacity-100 z-10" : "opacity-0 z-0 pointer-events-none"
         }`}
       />
+      {playbackBlocked && !isLocal && stream?.getAudioTracks()?.length > 0 && (
+        <button
+          type="button"
+          onClick={() => videoRef.current?.play()
+            .then(() => setPlaybackBlocked(false))
+            .catch((error) => console.warn("Remote meeting playback remains blocked:", error))}
+          className="absolute bottom-3 right-3 z-30 inline-flex items-center gap-1.5 rounded-lg bg-black/85 px-3 py-2 text-xs font-bold text-white shadow-lg hover:bg-black focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2C2DE0]"
+        >
+          <Volume2 size={14} />
+          Enable audio
+        </button>
+      )}
       
       {/* ── Avatar fallback (shown only if no live video) ── */}
       {!hasLiveVideo && (

@@ -81,7 +81,7 @@ function ParticipantRow({ p, isHostView, onAction }) {
       {/* Host action dropdown */}
       {isHostView && p.role !== "host" && (
         <div className="relative" ref={menuRef}>
-          <button className="bg-[#2C2DE0] text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150 group"
+          <button
             onClick={() => setMenuOpen((v) => !v)}
             className="opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-gray-400 dark:text-white/50 hover:text-gray-900 dark:hover:text-white transition-all"
           >
@@ -90,7 +90,7 @@ function ParticipantRow({ p, isHostView, onAction }) {
           {menuOpen && (
             <div className="absolute right-0 top-full mt-1 w-44 bg-[#1a1a1a] border border-white/10 rounded-xl shadow-2xl z-50 overflow-hidden">
               {actions.map((a) => (
-                <button className="bg-[#2C2DE0] text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150 group"
+                <button
                   key={a.label}
                   onClick={() => { a.fn(); setMenuOpen(false); }}
                   className={`w-full flex items-center gap-2 px-3 py-2.5 text-xs transition-colors ${a.danger ? "text-red-400 hover:bg-red-500/10" : "text-white/80 hover:bg-white dark:bg-gray-900/10"

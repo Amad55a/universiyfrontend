@@ -1366,6 +1366,7 @@ const en = {
       },
       dashboard: "Dashboard",
       users: "Users",
+      groups: "Groups",
       universityStudents: "University Registry",
       books: "Books",
       reservations: "Reservations",

@@ -11,6 +11,7 @@ import {
   Bell,
   BookCheck,
   ShieldCheck,
+  UsersRound,
 } from "lucide-react";
 import { FcBarChart, FcDocument } from "react-icons/fc";
 
@@ -48,6 +49,13 @@ export const SIDEBAR_SECTIONS = [
         labelKey: "universityRegistry",
         icon: GraduationCap,
         path: "/admin/university-registry",
+        roles: ["admin"],
+      },
+      {
+        id: "groups",
+        labelKey: "groups",
+        icon: UsersRound,
+        path: "/admin/groups",
         roles: ["admin"],
       },
       {

@@ -1295,6 +1295,7 @@ const so = {
       },
       dashboard: "Dashboard-ka",
       users: "Isticmaalayaasha",
+      groups: "Kooxaha",
       universityStudents: "diiwaanka-jaamacada",
       books: "Buugaagta",
       reservations: "Boos qabsashada",

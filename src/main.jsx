@@ -57,6 +57,7 @@ import MyLibrary from './student/components/DashboardComponents/myLibrary';
 import MyBorrowsPage from './student/components/DashboardComponents/Myborrowspage';
 import RecentlyViewedPage from './student/pages/RecentlyViewedPage';
 import UserAuthorityPage from './admin/pages/userAuthorityPage';
+import AdminGroupsPage from './admin/pages/GroupsPage';
 import TeacherDashboardPage from './teacher/page/TeacherDashboardPage';
 import { teacherRoutes } from './teacher/TeacherRoutes';
 import TeacherLayout from './teacher/TeacherLayout';
@@ -195,6 +196,7 @@ createRoot(document.getElementById('root')).render(
                                             <Route path="dashboard" element={<AdminDashboardPage />} />
                                             <Route path="users" element={<UsersPage />} />
                                             <Route path="users/:id" element={<UserDetailsPage />} />
+                                            <Route path="groups" element={<AdminGroupsPage />} />
                                             <Route path="university-registry" element={<UniversityStudentsPage />} />
                                             <Route path="seats/:id/timeline" element={<SeatTimelinePage />} />
                                             <Route path="seats" element={<SeatsPage />} />

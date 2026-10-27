@@ -2,20 +2,33 @@ import React, { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { Users, GraduationCap, Layers, BookOpen, Archive, Search, Building2 } from "lucide-react";
 import { useLanguage } from "@/hooks/useLanguage";
+import { useAuth } from "@/context/AuthContext";
 import { getMyGroups, searchGroups } from "@/api/groupApi";
 import { Spinner } from "./ui";
 
 const BTN_PRIMARY =
   "bg-[#2C2DE0] text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150 disabled:opacity-50 disabled:pointer-events-none";
 
-const SECTIONS = [
-  { key: "university", label: "University", icon: Building2 },
-  { key: "department", label: "Department", icon: Users },
-  { key: "semester", label: "Semester", icon: Layers },
-  { key: "courses", label: "Courses", icon: BookOpen },
-  { key: "classes", label: "Classes", icon: Layers },
-  { key: "teacherGroups", label: "Teacher Groups", icon: GraduationCap },
-];
+const GROUP_SECTIONS = {
+  university: { key: "university", label: "University", icon: Building2 },
+  department: { key: "department", label: "Department", icon: Users },
+  semester: { key: "semester", label: "Semester", icon: Layers },
+  courses: { key: "courses", label: "Courses", icon: BookOpen },
+  classes: { key: "classes", label: "Classes", icon: Layers },
+  teacherGroups: { key: "teacherGroups", label: "Teacher Groups", icon: GraduationCap },
+};
+
+const sectionsForRole = (role) => {
+  if (role === "teacher") return [
+    GROUP_SECTIONS.university, GROUP_SECTIONS.teacherGroups, GROUP_SECTIONS.department,
+    GROUP_SECTIONS.semester, GROUP_SECTIONS.courses, GROUP_SECTIONS.classes,
+  ];
+  if (role === "admin") return Object.values(GROUP_SECTIONS);
+  return [
+    GROUP_SECTIONS.university, GROUP_SECTIONS.department, GROUP_SECTIONS.semester,
+    GROUP_SECTIONS.courses, GROUP_SECTIONS.classes,
+  ];
+};
 
 const EMPTY_GROUPS = {
   university: [],
@@ -61,20 +74,25 @@ const GroupCard = ({ group }) => (
 
 const Groups = () => {
   const { t } = useLanguage();
+  const { user } = useAuth();
+  const sections = sectionsForRole(user?.role);
   const [groups, setGroups] = useState(EMPTY_GROUPS);
   const [loading, setLoading] = useState(true);
-  const [active, setActive] = useState("courses");
+  const [active, setActive] = useState(sections[0].key);
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState(null);
   const [searching, setSearching] = useState(false);
+  const [error, setError] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
+    setError("");
     try {
       const data = await getMyGroups();
-      if (data.success) setGroups({ ...EMPTY_GROUPS, ...data.groups });
-    } catch {
-      /* ignore */
+      if (!data.success) throw new Error(data.message || "Unable to load groups.");
+      setGroups({ ...EMPTY_GROUPS, ...data.groups });
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || requestError.message || "Unable to load groups.");
     } finally {
       setLoading(false);
     }
@@ -95,7 +113,8 @@ const Groups = () => {
     const handle = setTimeout(async () => {
       try {
         const data = await searchGroups(q);
-        if (data.success) setSearchResults(data.groups);
+        if (!data.success) throw new Error(data.message || "Group search failed.");
+        setSearchResults(data.groups);
       } catch {
         setSearchResults(null);
       } finally {
@@ -107,7 +126,10 @@ const Groups = () => {
 
   const activeGroups =
     searchResults ??
-    (groups[active] ?? []).filter((g) => g.name.toLowerCase().includes(query.trim().toLowerCase()));
+    (groups[active] ?? []).filter((g) => (g?.name ?? "").toLowerCase().includes(query.trim().toLowerCase()));
+  const visibleGroups = user?.role === "student"
+    ? activeGroups.filter((group) => group.type !== "teacher_group")
+    : activeGroups;
 
   return (
     <div className="w-full min-w-0 mx-auto px-0 sm:px-6 py-4 sm:py-6 flex flex-col sm:flex-row gap-4 sm:gap-6">
@@ -117,7 +139,7 @@ const Groups = () => {
           {t["community.nav.groups"] ?? "Groups"}
         </h1>
         <nav className="flex gap-2 overflow-x-auto pb-1 sm:pb-0 sm:block sm:space-y-1" aria-label="Group categories">
-          {SECTIONS.map(({ key, label, icon: Icon }) => (
+          {sections.map(({ key, label, icon: Icon }) => (
             <button
               key={key}
               type="button"
@@ -167,12 +189,17 @@ const Groups = () => {
           <div className="flex justify-center py-20">
             <Spinner size={20} className="text-[#2C2DE0]" />
           </div>
+        ) : error ? (
+          <div className="text-center py-16">
+            <p role="alert" className="text-sm text-red-600 dark:text-red-400">{error}</p>
+            <button type="button" onClick={load} className="mt-3 rounded-lg border px-4 py-2 text-sm font-semibold">Retry</button>
+          </div>
         ) : active === "archived" ? (
           <div className="text-center py-24">
             <Archive size={36} className="mx-auto text-black/20 dark:text-white/20 mb-3" />
             <p className="text-sm font-semibold text-black/50 dark:text-white/50">No archived groups</p>
           </div>
-        ) : activeGroups.length === 0 ? (
+        ) : visibleGroups.length === 0 ? (
           <div className="text-center py-24">
             <Users size={36} className="mx-auto text-black/20 dark:text-white/20 mb-3" />
             <p className="text-sm font-semibold text-black/50 dark:text-white/50">Nothing here yet</p>
@@ -182,7 +209,7 @@ const Groups = () => {
           </div>
         ) : (
           <div className="space-y-4">
-            {activeGroups.map((g) => (
+            {visibleGroups.map((g) => (
               <GroupCard key={g._id} group={g} />
             ))}
           </div>
