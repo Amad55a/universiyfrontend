@@ -1,17 +1,22 @@
-import { act, renderHook } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   emit: vi.fn(),
-  socket: { id: "local-socket" },
+  listeners: new Map(),
+  socket: { id: "local-socket", disconnected: false },
 }));
 
 vi.mock("@/socket.js", () => ({
   default: {
     get id() { return mocks.socket.id; },
     emit: (...args) => mocks.emit(...args),
-    on: vi.fn(),
-    off: vi.fn(),
+    on: (event, handler) => mocks.listeners.set(event, handler),
+    off: (event, handler) => {
+      if (mocks.listeners.get(event) === handler) mocks.listeners.delete(event);
+    },
+    connect: vi.fn(),
+    get disconnected() { return mocks.socket.disconnected; },
   },
 }));
 vi.mock("sonner", () => ({
@@ -47,6 +52,9 @@ const makeTrack = (kind, id) => ({
 describe("meeting media controls", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.listeners.clear();
+    mocks.socket.id = "local-socket";
+    mocks.socket.disconnected = false;
     vi.stubGlobal("MediaStream", MockMediaStream);
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
@@ -66,12 +74,13 @@ describe("meeting media controls", () => {
     vi.unstubAllGlobals();
   });
 
-  it("requires the server camera lease before opening and publishing a camera", async () => {
+  it("opens the camera after the host is granted immediately", async () => {
     const { useMeetingWebRTC } = await import("./useMeetingWebRTC.js");
     const { result } = renderHook(() => useMeetingWebRTC({
       meetingCode: "ROOM01",
       user: { _id: "user-1", name: "Ada" },
-      role: "participant",
+      role: "host",
+      isHost: true,
       enabled: false,
     }));
 
@@ -88,10 +97,10 @@ describe("meeting media controls", () => {
     );
   });
 
-  it("does not ask for camera permission when the server denies camera ownership", async () => {
+  it("waits for host approval before opening a participant camera", async () => {
     mocks.emit.mockImplementation((event, _payload, acknowledge) => {
       if (event === "meeting:camera-request") {
-        acknowledge?.({ granted: false, reason: "Another participant is using the camera." });
+        acknowledge?.({ granted: false, pending: true, reason: "Waiting for the host." });
       }
     });
     const { useMeetingWebRTC } = await import("./useMeetingWebRTC.js");
@@ -108,5 +117,63 @@ describe("meeting media controls", () => {
 
     expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
     expect(result.current.hasCameraOn).toBe(false);
+    expect(result.current.cameraRequestPending).toBe(true);
+  });
+
+  it("stops local media when leaving the room", async () => {
+    const { useMeetingWebRTC } = await import("./useMeetingWebRTC.js");
+    const { result } = renderHook(() => useMeetingWebRTC({
+      meetingCode: "ROOM03",
+      user: { _id: "user-3", name: "Lin" },
+      role: "host",
+      isHost: true,
+      enabled: false,
+    }));
+
+    await act(async () => {
+      await result.current.toggleCamera();
+      result.current.leaveRoom();
+    });
+
+    expect(mocks.emit).toHaveBeenCalledWith("meeting:leave-room");
+    expect(result.current.hasCameraOn).toBe(false);
+    expect(result.current.joinStatus).toBe("left");
+  });
+
+  it("rejoins after a socket reconnect and restores approved local media state", async () => {
+    const { useMeetingWebRTC } = await import("./useMeetingWebRTC.js");
+    const user = { _id: "user-4", name: "Katherine" };
+    const { result } = renderHook(() => useMeetingWebRTC({
+      meetingCode: "ROOM04",
+      user,
+      role: "host",
+      isHost: true,
+      enabled: true,
+    }));
+
+    await waitFor(() => {
+      expect(mocks.emit).toHaveBeenCalledWith(
+        "meeting:join-room",
+        expect.objectContaining({ meetingCode: "ROOM04" })
+      );
+    });
+    await act(async () => {
+      await result.current.toggleCamera();
+    });
+    expect(result.current.hasCameraOn).toBe(true);
+
+    act(() => mocks.listeners.get("disconnect")?.());
+    mocks.socket.id = "local-socket-reconnected";
+    act(() => mocks.listeners.get("connect")?.());
+
+    await act(async () => {
+      mocks.listeners.get("meeting:participants-updated")?.({ participants: [] });
+    });
+
+    expect(mocks.emit).toHaveBeenCalledWith(
+      "meeting:update-state",
+      expect.objectContaining({ hasCameraOn: true, cameraTrackId: "camera-1" })
+    );
+    expect(result.current.joinStatus).toBe("joined");
   });
 });

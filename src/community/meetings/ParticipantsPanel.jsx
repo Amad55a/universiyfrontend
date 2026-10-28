@@ -57,6 +57,12 @@ function ParticipantRow({ p, isHostView, onAction }) {
           {(p.role === "presenter" || p.role === "Presenter") && (
             <span className="text-[8px] font-black px-1.5 py-0.5 rounded bg-white dark:bg-gray-900/10 text-white/70 uppercase shrink-0">Presenter</span>
           )}
+          {p.connectionStatus === "reconnecting" && (
+            <span className="text-[8px] font-black px-1.5 py-0.5 rounded bg-amber-400/20 text-amber-300 uppercase shrink-0">Reconnecting</span>
+          )}
+          {p.connectionStatus === "offline" && (
+            <span className="text-[8px] font-black px-1.5 py-0.5 rounded bg-red-400/20 text-red-300 uppercase shrink-0">Offline</span>
+          )}
         </div>
         <p className="text-white/30 text-[10px] mt-0.5 capitalize">{p.role}</p>
       </div>

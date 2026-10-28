@@ -74,6 +74,8 @@ export const VideoTile = memo(function VideoTile({
   onPin,
   compact = false,
   universityId = null,
+  hasVideo = undefined,
+  connectionStatus = "connected",
 
   // ADD
   socketId = null,
@@ -93,10 +95,17 @@ export const VideoTile = memo(function VideoTile({
 
   const [localIsSpeaking, setLocalIsSpeaking] = useState(false);
   const [playbackBlocked, setPlaybackBlocked] = useState(false);
-  const isSpeaking = externalIsSpeaking || localIsSpeaking;
+  const [liveVideoReady, setLiveVideoReady] = useState(false);
+  const [failedPhotoUrl, setFailedPhotoUrl] = useState(null);
+  const isSpeaking = !muted && (
+    externalIsSpeaking ||
+    (Boolean(stream?.getAudioTracks()?.length) && localIsSpeaking)
+  );
 
-  const hasCameraOn =
-    stream?.getVideoTracks()?.some((t) => t.enabled) ?? false;
+  const trackLooksLive = stream?.getVideoTracks()?.some(
+    (t) => t.enabled && t.readyState === "live" && t.muted !== true
+  ) ?? false;
+  const hasCameraOn = hasVideo === false ? false : (hasVideo === true ? trackLooksLive : trackLooksLive);
 
   // ── Video element binding ──────────────────────────────────────────────
   // BUG 6 FIX: only touch srcObject when the underlying tracks actually
@@ -116,6 +125,27 @@ export const VideoTile = memo(function VideoTile({
   }, [stream, isLocal]);
 
   useEffect(() => {
+    const tracks = stream?.getVideoTracks?.() ?? [];
+    const update = () => {
+      const live = tracks.some((t) => t.enabled && t.readyState === "live" && t.muted !== true);
+      setLiveVideoReady(live);
+    };
+    update();
+    tracks.forEach((track) => {
+      track.addEventListener?.("mute", update);
+      track.addEventListener?.("unmute", update);
+      track.addEventListener?.("ended", update);
+    });
+    return () => {
+      tracks.forEach((track) => {
+        track.removeEventListener?.("mute", update);
+        track.removeEventListener?.("unmute", update);
+        track.removeEventListener?.("ended", update);
+      });
+    };
+  }, [stream]);
+
+  useEffect(() => {
     if (!pipRef.current) return;
     if (sameTracks(pipRef.current.srcObject, pipStream)) return;
     pipRef.current.srcObject = pipStream ?? null;
@@ -127,18 +157,17 @@ export const VideoTile = memo(function VideoTile({
   useEffect(() => {
     // Clean up previous source/analyser connections
     if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
-    if (sourceRef.current) { try { sourceRef.current.disconnect(); } catch { } sourceRef.current = null; }
-
-    if (!stream || muted) {
-      setLocalIsSpeaking(false);
-      return;
+    if (sourceRef.current) {
+      try { sourceRef.current.disconnect(); } catch (error) {
+        console.warn("[VideoTile] Could not disconnect the previous audio source:", error);
+      }
+      sourceRef.current = null;
     }
+
+    if (!stream || muted) return;
 
     const audioTracks = stream.getAudioTracks();
-    if (audioTracks.length === 0) {
-      setLocalIsSpeaking(false);
-      return;
-    }
+    if (audioTracks.length === 0) return;
 
     let active = true;
 
@@ -183,8 +212,12 @@ export const VideoTile = memo(function VideoTile({
     return () => {
       active = false;
       if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
-      if (sourceRef.current) { try { sourceRef.current.disconnect(); } catch { } sourceRef.current = null; }
-      setLocalIsSpeaking(false);
+      if (sourceRef.current) {
+        try { sourceRef.current.disconnect(); } catch (error) {
+          console.warn("[VideoTile] Could not disconnect the audio source:", error);
+        }
+        sourceRef.current = null;
+      }
     };
   }, [stream, muted]);
 
@@ -192,8 +225,12 @@ export const VideoTile = memo(function VideoTile({
   useEffect(() => {
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
-      try { sourceRef.current?.disconnect(); } catch { }
-      audioCtxRef.current?.close().catch(() => { });
+      try { sourceRef.current?.disconnect(); } catch (error) {
+        console.warn("[VideoTile] Could not disconnect the audio source on unmount:", error);
+      }
+      audioCtxRef.current?.close().catch((error) => {
+        console.warn("[VideoTile] Could not close the audio context:", error);
+      });
       audioCtxRef.current = null;
       analyserRef.current = null;
       sourceRef.current = null;
@@ -201,10 +238,13 @@ export const VideoTile = memo(function VideoTile({
   }, []);
 
   const hasLiveVideo =
+    hasVideo !== false &&
     (hasCameraOn || isScreenSharing) &&
-    (stream?.getVideoTracks()?.some((t) => t.enabled && t.readyState === "live") ?? false);
+    liveVideoReady &&
+    (stream?.getVideoTracks()?.some((t) => t.enabled && t.readyState === "live" && t.muted !== true) ?? false);
 
   const photoUrl = resolvePhoto(photo);
+  const photoFailed = failedPhotoUrl === photoUrl;
 
   return (
     <div
@@ -253,7 +293,7 @@ export const VideoTile = memo(function VideoTile({
           className="w-full h-full flex flex-col items-center justify-center bg-[#1a1a1a] px-3 z-0"
           style={{ gap: compact ? 6 : 16 }}
         >
-          {photoUrl ? (
+          {photoUrl && !photoFailed ? (
             <img
               src={photoUrl}
               alt={name}
@@ -261,7 +301,7 @@ export const VideoTile = memo(function VideoTile({
                 "rounded-full object-cover ring-4 ring-[#2C2DE0]/30 shrink-0",
                 compact ? "w-12 h-12" : "w-20 h-20",
               ].join(" ")}
-              onError={(e) => { e.target.style.display = "none"; }}
+              onError={() => setFailedPhotoUrl(photoUrl)}
             />
           ) : (
             <div
@@ -282,6 +322,12 @@ export const VideoTile = memo(function VideoTile({
               <p className={["text-[#2C2DE0]/80 font-mono mt-0.5", compact ? "text-[9px]" : "text-[11px]"].join(" ")}>
                 {universityId}
               </p>
+            )}
+            {connectionStatus === "reconnecting" && (
+              <p className="text-amber-300 text-[10px] font-bold mt-1">Reconnecting…</p>
+            )}
+            {connectionStatus === "offline" && (
+              <p className="text-red-300 text-[10px] font-bold mt-1">Offline</p>
             )}
             {!compact && (
               <p className="text-white/40 text-xs capitalize mt-1">{role}</p>
@@ -310,6 +356,16 @@ export const VideoTile = memo(function VideoTile({
         <div className="absolute inset-0 rounded-2xl ring-2 ring-[#2C2DE0] animate-pulse pointer-events-none z-10" />
       )}
 
+      {handRaised && (
+        <div
+          role="img"
+          aria-label={`${name} raised their hand`}
+          title={`${name} raised their hand`}
+          className="absolute top-2 right-12 z-20 flex h-8 w-8 items-center justify-center rounded-lg bg-[#2C2DE0] text-white shadow-lg"
+        >
+          <Hand size={15} />
+        </div>
+      )}
 
 
 

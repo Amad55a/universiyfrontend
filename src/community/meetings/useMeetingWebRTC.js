@@ -99,12 +99,18 @@ export function useMeetingWebRTC({ meetingCode, user, role, enabled, isHost = fa
   const [speakingParticipants, setSpeakingParticipants] = useState({});
   const [presenterId,          setPresenterId]          = useState(null);
   const [connectionError,      setConnectionError]      = useState("");
+  const [joinStatus,           setJoinStatus]           = useState("idle");
+  const [networkStatus,        setNetworkStatus]        = useState(
+    typeof navigator === "undefined" || navigator.onLine ? "online" : "offline"
+  );
 
   // ── Screen-share permission state ────────────────────────────────────────
   // Host-side: the pending request from a non-host participant (or null).
   const [screenShareRequest,        setScreenShareRequest]        = useState(null);
   // Requester-side: true while waiting for the host to respond.
   const [screenShareRequestPending, setScreenShareRequestPending] = useState(false);
+  const [cameraRequest,             setCameraRequest]             = useState(null);
+  const [cameraRequestPending,      setCameraRequestPending]      = useState(false);
 
   const peersRef        = useRef({});
   const localStreamRef  = useRef(null);
@@ -112,9 +118,24 @@ export function useMeetingWebRTC({ meetingCode, user, role, enabled, isHost = fa
   const screenStreamRef = useRef(null);
   const stoppingScreenRef = useRef(false);
   const cameraToggleInProgressRef = useRef(false);
+  const cameraCaptureGenerationRef = useRef(0);
   const startingScreenShareRef = useRef(false);
   const startedRef      = useRef(false);
   const joinPayloadRef  = useRef(null);
+  const leftIntentionallyRef = useRef(false);
+  const wasDisconnectedRef = useRef(false);
+  const restoreMeetingStateRef = useRef(false);
+  const joinedRef = useRef(false);
+  const joinTimeoutRef = useRef(null);
+  const localMeetingStateRef = useRef({
+    isMuted: true,
+    hasCameraOn: false,
+    handRaised: false,
+    isScreenSharing: false,
+    presenterId: null,
+    cameraTrackId: null,
+    screenTrackId: null,
+  });
 
   // ── BUG 2 FIX: Synchronous stream management via ref ────────────────────
   // React state batching causes ontrack to snapshot stale state. We use a Map
@@ -130,15 +151,20 @@ export function useMeetingWebRTC({ meetingCode, user, role, enabled, isHost = fa
   const hasCameraOnRef     = useRef(false);
   const isHostRef          = useRef(isHost);
   const screenShareRequestPendingRef = useRef(false);
+  const cameraRequestPendingRef = useRef(false);
+  const presenterIdRef = useRef(null);
   useEffect(() => { isScreenSharingRef.current = isScreenSharing; }, [isScreenSharing]);
   useEffect(() => { hasCameraOnRef.current     = hasCameraOn;     }, [hasCameraOn]);
   useEffect(() => { isHostRef.current          = isHost;          }, [isHost]);
   useEffect(() => { screenShareRequestPendingRef.current = screenShareRequestPending; }, [screenShareRequestPending]);
+  useEffect(() => { cameraRequestPendingRef.current = cameraRequestPending; }, [cameraRequestPending]);
+  useEffect(() => { presenterIdRef.current = presenterId; }, [presenterId]);
 
   const audioContextRef = useRef(null);
   const analyzersRef    = useRef({});
 
   const emitState = useCallback((state) => {
+    localMeetingStateRef.current = { ...localMeetingStateRef.current, ...state };
     socket.emit("meeting:update-state", state);
   }, []);
 
@@ -156,7 +182,9 @@ export function useMeetingWebRTC({ meetingCode, user, role, enabled, isHost = fa
     const a = analyzersRef.current[socketId];
     if (!a) return;
     clearInterval(a.intervalId);
-    try { a.source.disconnect(); } catch {}
+    try { a.source.disconnect(); } catch (error) {
+      console.warn("[WebRTC] Could not disconnect the audio analyzer:", error);
+    }
     delete analyzersRef.current[socketId];
     setSpeakingParticipants((p) => { const n = { ...p }; delete n[socketId]; return n; });
   }, []);
@@ -203,7 +231,9 @@ export function useMeetingWebRTC({ meetingCode, user, role, enabled, isHost = fa
     if (pc) {
       clearTimeout(pc._restartTimer);
       clearTimeout(pc._giveupTimer);
-      try { pc.close(); } catch {}
+      try { pc.close(); } catch (error) {
+        console.warn(`[WebRTC] Could not close peer connection ${targetSocketId}:`, error);
+      }
     }
     delete peersRef.current[targetSocketId];
     iceCandidateQueueRef.current.delete(targetSocketId);
@@ -438,76 +468,90 @@ export function useMeetingWebRTC({ meetingCode, user, role, enabled, isHost = fa
     emitState({ isMuted: nextMuted });
   }, [isMuted, ensureAudio, emitState]);
 
-  // ── toggleCamera ─────────────────────────────────────────────────────────
-  const toggleCamera = useCallback(async () => {
-    if (cameraToggleInProgressRef.current) return;
-    cameraToggleInProgressRef.current = true;
-    if (hasCameraOn) {
-      // OFF: stop track, remove from base stream, replaceTrack(null) on all peers
-      const base = localStreamRef.current;
-      cameraStreamRef.current?.getVideoTracks().forEach((t) => {
-        t.stop();
-        base?.removeTrack(t);
-      });
-      cameraStreamRef.current = null;
-      if (base) setLocalStream(new MediaStream(base.getTracks()));
+  const stopLocalCamera = useCallback(() => {
+    cameraCaptureGenerationRef.current += 1;
+    const base = localStreamRef.current;
+    cameraStreamRef.current?.getVideoTracks().forEach((t) => {
+      t.stop();
+      base?.removeTrack(t);
+    });
+    cameraStreamRef.current = null;
+    if (base) setLocalStream(new MediaStream(base.getTracks()));
+    Object.values(peersRef.current).forEach((pc) => {
+      if (pc._cameraSender) {
+        try {
+          pc._cameraSender.replaceTrack(null).catch((error) => {
+            console.warn("[WebRTC] Could not detach the camera track:", error);
+          });
+        } catch (error) {
+          console.warn("[WebRTC] Could not detach the camera track:", error);
+        }
+      }
+    });
+    setHasCameraOn(false);
+    socket.emit("meeting:camera-release");
+    emitState({
+      hasCameraOn: false,
+      cameraTrackId: null,
+      screenTrackId: screenStreamRef.current?.getVideoTracks()[0]?.id ?? null,
+    });
+  }, [emitState]);
 
-      Object.values(peersRef.current).forEach((pc) => {
-        if (pc._cameraSender) { try { pc._cameraSender.replaceTrack(null); } catch {} }
-      });
-      setHasCameraOn(false);
-      socket.emit("meeting:camera-release");
-      cameraToggleInProgressRef.current = false;
-      emitState({
-        hasCameraOn:  false,
-        cameraTrackId: null,
-        screenTrackId: screenStreamRef.current?.getVideoTracks()[0]?.id ?? null,
-      });
-      playCameraOff();
-      toast.success("Camera off");
-      return;
-    }
-
+  const startCameraCapture = useCallback(async () => {
+    if (hasCameraOnRef.current) return true;
     const cameraLease = await new Promise((resolve) => {
-      const timeout = setTimeout(() => resolve({ granted: false, reason: "Camera permission request timed out." }), 5000);
+      const timeout = setTimeout(() => resolve({
+        granted: false,
+        reason: "Camera permission request timed out.",
+      }), 8000);
       socket.emit("meeting:camera-request", {}, (result) => {
         clearTimeout(timeout);
-        resolve(result || { granted: false, reason: "Unable to reserve the camera." });
+        resolve(result || { granted: false, reason: "Unable to request the camera." });
       });
     });
     if (!cameraLease.granted) {
-      toast.error(cameraLease.reason || "Another participant is currently using the meeting camera.");
-      cameraToggleInProgressRef.current = false;
-      return;
+      if (cameraLease.pending) {
+        setCameraRequestPending(true);
+        toast.info("Camera request sent — waiting for the host to approve");
+      } else {
+        toast.error(cameraLease.reason || "The host has not approved your camera.");
+      }
+      return false;
     }
 
-    // ON — try HD → SD → basic
+    const captureGeneration = ++cameraCaptureGenerationRef.current;
     let camStream = null;
     const constraints = [
       { video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, max: 30 }, facingMode: "user" }, audio: false },
       { video: { width: { ideal: 640 },  height: { ideal: 480 }, frameRate: { ideal: 24 }                               }, audio: false },
       { video: true, audio: false },
     ];
+    let lastCameraError = null;
     for (const c of constraints) {
-      try { camStream = await navigator.mediaDevices.getUserMedia(c); break; } catch {}
+      try {
+        camStream = await navigator.mediaDevices.getUserMedia(c);
+        break;
+      } catch (error) {
+        lastCameraError = error;
+      }
     }
     if (!camStream) {
       socket.emit("meeting:camera-release");
-      toast.error("Could not access camera. Please check permissions.");
-      cameraToggleInProgressRef.current = false;
-      return;
+      console.error("[WebRTC] Camera capture failed:", lastCameraError);
+      toast.error(lastCameraError?.message || "Could not access camera. Please check permissions.");
+      return false;
+    }
+    if (captureGeneration !== cameraCaptureGenerationRef.current) {
+      camStream.getTracks().forEach((track) => track.stop());
+      return false;
     }
 
     cameraStreamRef.current = camStream;
     const videoTrack = camStream.getVideoTracks()[0];
     videoTrack.onended = () => {
       if (cameraStreamRef.current !== camStream) return;
-      cameraStreamRef.current = null;
-      localStreamRef.current?.removeTrack(videoTrack);
-      setLocalStream(new MediaStream(localStreamRef.current?.getTracks() || []));
-      setHasCameraOn(false);
-      socket.emit("meeting:camera-release");
-      emitState({ hasCameraOn: false, cameraTrackId: null });
+      stopLocalCamera();
+      playCameraOff();
     };
     console.log(`[WebRTC] camera track id=${videoTrack.id} readyState=${videoTrack.readyState}`);
 
@@ -517,13 +561,21 @@ export function useMeetingWebRTC({ meetingCode, user, role, enabled, isHost = fa
       setLocalStream(new MediaStream(base.getTracks()));
     }
 
-    Object.values(peersRef.current).forEach((pc) => {
+    for (const pc of Object.values(peersRef.current)) {
       if (pc._cameraSender) {
-        try { pc._cameraSender.replaceTrack(videoTrack); } catch {}
-      } else {
-        try { pc._cameraSender = pc.addTrack(videoTrack, base || new MediaStream()); } catch {}
+        try {
+          await pc._cameraSender.replaceTrack(videoTrack);
+          continue;
+        } catch (error) {
+          console.warn("[WebRTC] Could not replace the camera track; adding a sender:", error);
+        }
       }
-    });
+      try {
+        pc._cameraSender = pc.addTrack(videoTrack, camStream);
+      } catch (error) {
+        console.error("[WebRTC] Could not publish camera track to a peer:", error);
+      }
+    }
 
     setHasCameraOn(true);
     emitState({
@@ -533,8 +585,53 @@ export function useMeetingWebRTC({ meetingCode, user, role, enabled, isHost = fa
     });
     playCameraOn();
     toast.success("Camera on");
-    cameraToggleInProgressRef.current = false;
-  }, [hasCameraOn, ensureAudio, emitState]);
+    return true;
+  }, [ensureAudio, emitState, stopLocalCamera]);
+
+  // ── toggleCamera ─────────────────────────────────────────────────────────
+  const toggleCamera = useCallback(async () => {
+    if (cameraToggleInProgressRef.current) return;
+    cameraToggleInProgressRef.current = true;
+    try {
+      if (hasCameraOnRef.current) {
+        stopLocalCamera();
+        playCameraOff();
+        toast.success("Camera off");
+        return;
+      }
+
+      const activePresenter = presenterIdRef.current;
+      if (activePresenter && activePresenter !== socket.id && !isScreenSharingRef.current) {
+        toast.error("Only the presenter can use a camera while a screen is being shared.");
+        return;
+      }
+
+      if (cameraRequestPendingRef.current) {
+        toast.info("Already waiting for the host to approve your camera");
+        return;
+      }
+
+      const cameraLease = await new Promise((resolve) => {
+        const timeout = setTimeout(() => resolve({ granted: false, reason: "Camera permission request timed out." }), 8000);
+        socket.emit("meeting:camera-request", {}, (result) => {
+          clearTimeout(timeout);
+          resolve(result || { granted: false, reason: "Unable to request the camera." });
+        });
+      });
+      if (cameraLease.granted) {
+        await startCameraCapture();
+        return;
+      }
+      if (cameraLease.pending) {
+        setCameraRequestPending(true);
+        toast.info("Camera request sent — waiting for the host to approve");
+        return;
+      }
+      toast.error(cameraLease.reason || "The host has not approved your camera.");
+    } finally {
+      cameraToggleInProgressRef.current = false;
+    }
+  }, [startCameraCapture, stopLocalCamera]);
 
   // ── startScreenCapture ───────────────────────────────────────────────────
   // The actual getDisplayMedia + track-attach logic. Only ever invoked once
@@ -573,25 +670,27 @@ export function useMeetingWebRTC({ meetingCode, user, role, enabled, isHost = fa
     const screenTrack = screen.getVideoTracks()[0];
     console.log(`[WebRTC] screen track id=${screenTrack.id} readyState=${screenTrack.readyState}`);
 
-    Object.values(peersRef.current).forEach((pc) => {
+    for (const pc of Object.values(peersRef.current)) {
       // ── BUG 3 FIX: Validate sender before replaceTrack ────────────────
       if (pc._screenSender) {
+        let trackReplaced = false;
         try {
           const transport = pc._screenSender.transport;
           if (transport && transport.state !== "closed") {
-            pc._screenSender.replaceTrack(screenTrack);
-          } else {
-            // Sender died — create a fresh one via addTrack
-            pc._screenSender = pc.addTrack(screenTrack, screen);
+            await pc._screenSender.replaceTrack(screenTrack);
+            trackReplaced = true;
           }
-        } catch {
-          // Any error on replaceTrack → fall back to addTrack
-          try { pc._screenSender = pc.addTrack(screenTrack, screen); } catch {}
+        } catch (error) {
+          console.warn("[WebRTC] Could not replace the screen track; adding a sender:", error);
         }
-      } else {
-        try { pc._screenSender = pc.addTrack(screenTrack, screen); } catch {}
+        if (trackReplaced) continue;
       }
-    });
+      try {
+        pc._screenSender = pc.addTrack(screenTrack, screen);
+      } catch (error) {
+        console.error("[WebRTC] Could not publish the screen track to a peer:", error);
+      }
+    }
 
     const mySocketId = socket.id;
     setIsScreenSharing(true);
@@ -620,7 +719,7 @@ export function useMeetingWebRTC({ meetingCode, user, role, enabled, isHost = fa
   }, [emitState]);
 
   // ── stopScreenCapture ────────────────────────────────────────────────────
-  const stopScreenCapture = useCallback(() => {
+  const stopScreenCapture = useCallback(({ silent = false } = {}) => {
     startingScreenShareRef.current = false;
     screenStreamRef.current?.getTracks().forEach((t) => t.stop());
     screenStreamRef.current = null;
@@ -637,12 +736,15 @@ export function useMeetingWebRTC({ meetingCode, user, role, enabled, isHost = fa
         try {
           const transport = pc._screenSender.transport;
           if (transport && transport.state !== "closed") {
-            pc._screenSender.replaceTrack(null);
+            pc._screenSender.replaceTrack(null).catch((error) => {
+              console.warn("[WebRTC] Could not detach the screen track:", error);
+            });
           } else {
             // Sender is dead — null it so the next share creates a fresh one
             pc._screenSender = null;
           }
-        } catch {
+        } catch (error) {
+          console.warn("[WebRTC] Could not detach the screen track:", error);
           pc._screenSender = null;
         }
       }
@@ -657,7 +759,7 @@ export function useMeetingWebRTC({ meetingCode, user, role, enabled, isHost = fa
     // Let the room know the floor is free again (relevant if someone is
     // waiting on the host to stop before their request can be approved).
     socket.emit("meeting:screen-share-ended");
-    toast.success("Screen share stopped");
+    if (!silent) toast.success("Screen share stopped");
   }, [emitState]);
 
   // ── toggleScreenShare ────────────────────────────────────────────────────
@@ -667,6 +769,12 @@ export function useMeetingWebRTC({ meetingCode, user, role, enabled, isHost = fa
   const toggleScreenShare = useCallback(async () => {
     if (isScreenSharing) {
       stopScreenCapture();
+      return;
+    }
+
+    const activePresenter = presenterIdRef.current;
+    if (activePresenter && activePresenter !== socket.id) {
+      toast.error("Someone is already sharing their screen. Wait until they stop.");
       return;
     }
 
@@ -715,6 +823,19 @@ export function useMeetingWebRTC({ meetingCode, user, role, enabled, isHost = fa
     });
   }, []);
 
+  const cancelCameraRequest = useCallback(() => {
+    setCameraRequestPending(false);
+    socket.emit("meeting:camera-cancel");
+  }, []);
+
+  const respondToCameraRequest = useCallback((accept) => {
+    setCameraRequest((req) => {
+      if (!req) return req;
+      socket.emit("meeting:camera-respond", { accept, targetSocketId: req.socketId });
+      return null;
+    });
+  }, []);
+
   // ── toggleHand ───────────────────────────────────────────────────────────
   const toggleHand = useCallback(() => {
     const next = !handRaised;
@@ -730,17 +851,16 @@ export function useMeetingWebRTC({ meetingCode, user, role, enabled, isHost = fa
 
   // ── leaveRoom ────────────────────────────────────────────────────────────
   const leaveRoom = useCallback(() => {
+    if (leftIntentionallyRef.current) return;
+    leftIntentionallyRef.current = true;
+    joinedRef.current = false;
+    clearTimeout(joinTimeoutRef.current);
+    joinTimeoutRef.current = null;
+    setJoinStatus("left");
     socket.emit("meeting:leave-room");
     socket.emit("meeting:camera-release");
     socket.emit("meeting:screen-share-ended");
-    Object.values(peersRef.current).forEach((pc) => {
-      clearTimeout(pc._restartTimer);
-      clearTimeout(pc._giveupTimer);
-      try { pc.close(); } catch {}
-    });
-    peersRef.current = {};
-    iceCandidateQueueRef.current.clear();
-    remoteStreamsRef.current.clear();
+    Object.keys(peersRef.current).forEach(closeAndRemovePeer);
     localStreamRef.current?.getTracks().forEach((t) => t.stop());
     cameraStreamRef.current?.getTracks().forEach((t) => t.stop());
     screenStreamRef.current?.getTracks().forEach((t) => t.stop());
@@ -752,7 +872,31 @@ export function useMeetingWebRTC({ meetingCode, user, role, enabled, isHost = fa
     setPresenterId(null);
     setScreenShareRequest(null);
     setScreenShareRequestPending(false);
-  }, []);
+    setCameraRequest(null);
+    setCameraRequestPending(false);
+    Object.keys(analyzersRef.current).forEach(stopAnalyzingStream);
+  }, [closeAndRemovePeer, stopAnalyzingStream]);
+
+  const retryJoin = useCallback(() => {
+    if (!joinPayloadRef.current) return;
+    leftIntentionallyRef.current = false;
+    joinedRef.current = false;
+    setConnectionError("");
+    setJoinStatus("joining");
+
+    Object.keys(peersRef.current).forEach(closeAndRemovePeer);
+    setRemoteStreams({});
+
+    clearTimeout(joinTimeoutRef.current);
+    joinTimeoutRef.current = setTimeout(() => {
+      if (joinedRef.current || leftIntentionallyRef.current) return;
+      setJoinStatus("error");
+      setConnectionError("Connection timed out. Check your internet and retry.");
+    }, 12000);
+
+    socket.emit("meeting:join-room", joinPayloadRef.current);
+    if (socket.disconnected) socket.connect();
+  }, [closeAndRemovePeer]);
 
   // ── Local audio analysis ─────────────────────────────────────────────────
   useEffect(() => {
@@ -762,9 +906,12 @@ export function useMeetingWebRTC({ meetingCode, user, role, enabled, isHost = fa
 
   // Cleanup audio context on unmount
   useEffect(() => {
+    const analyzers = analyzersRef.current;
     return () => {
-      Object.keys(analyzersRef.current).forEach(stopAnalyzingStream);
-      audioContextRef.current?.close().catch(() => {});
+      Object.keys(analyzers).forEach(stopAnalyzingStream);
+      audioContextRef.current?.close().catch((error) => {
+        console.warn("[WebRTC] Could not close the audio context:", error);
+      });
       audioContextRef.current = null;
     };
   }, [stopAnalyzingStream]);
@@ -774,6 +921,7 @@ export function useMeetingWebRTC({ meetingCode, user, role, enabled, isHost = fa
     if (!enabled || !meetingCode || !user) return;
     if (startedRef.current) return;
     startedRef.current = true;
+    leftIntentionallyRef.current = false;
 
     const code = meetingCode.toUpperCase();
     let cancelled = false;
@@ -788,11 +936,18 @@ export function useMeetingWebRTC({ meetingCode, user, role, enabled, isHost = fa
     };
     joinPayloadRef.current = joinPayload;
 
+    setJoinStatus("joining");
+    setConnectionError("");
     (async () => {
       await ensureAudio();
       if (cancelled) return;
       socket.emit("meeting:join-room", joinPayload);
     })();
+    joinTimeoutRef.current = setTimeout(() => {
+      if (joinedRef.current || leftIntentionallyRef.current || cancelled) return;
+      setJoinStatus("error");
+      setConnectionError("Connection timed out. Check your internet and retry.");
+    }, 12000);
 
     // ── Socket event handlers ────────────────────────────────────────────
 
@@ -802,12 +957,12 @@ export function useMeetingWebRTC({ meetingCode, user, role, enabled, isHost = fa
       peers.forEach((id) => createPeer(id, true));
     };
 
-    const onUserJoined = ({ socketId }) => {
+    const onUserJoined = ({ socketId, reconnected = false }) => {
       if (socketId === socket.id) return;
       console.log(`[WebRTC] user joined: ${socketId}`);
       // New user — they will send us an offer (they're the initiator)
       if (!peersRef.current[socketId]) createPeer(socketId, false);
-      playJoin();
+      if (!reconnected) playJoin();
     };
 
     const onOffer = async ({ from, offer }) => {
@@ -872,20 +1027,33 @@ export function useMeetingWebRTC({ meetingCode, user, role, enabled, isHost = fa
       }
     };
 
-    const onDisconnected = ({ socketId }) => {
+    const onDisconnected = ({ socketId, temporary = false }) => {
       console.log(`[WebRTC] user disconnected: ${socketId}`);
       closeAndRemovePeer(socketId);
       setPresenterId((p) => (p === socketId ? null : p));
       setScreenShareRequest((r) => (r?.socketId === socketId ? null : r));
-      playLeave();
+      if (!temporary) playLeave();
     };
 
     const onParticipants = ({ participants: list }) => {
+      if (leftIntentionallyRef.current) return;
+      clearTimeout(joinTimeoutRef.current);
+      joinTimeoutRef.current = null;
       setConnectionError("");
+      joinedRef.current = true;
+      setJoinStatus("joined");
       setParticipants(list ?? []);
+      if (restoreMeetingStateRef.current) {
+        restoreMeetingStateRef.current = false;
+        emitState(localMeetingStateRef.current);
+        toast.success("Reconnected to meeting");
+      }
     };
 
     const onJoinError = ({ message }) => {
+      clearTimeout(joinTimeoutRef.current);
+      joinTimeoutRef.current = null;
+      setJoinStatus("error");
       setConnectionError(message || "Could not connect to the meeting.");
     };
 
@@ -894,25 +1062,18 @@ export function useMeetingWebRTC({ meetingCode, user, role, enabled, isHost = fa
     const onForceMute = () => {
       localStreamRef.current?.getAudioTracks().forEach((t) => { t.enabled = false; });
       setIsMuted(true);
+      emitState({ isMuted: true });
     };
 
     const onForceCameraOff = () => {
-      const base = localStreamRef.current;
-      cameraStreamRef.current?.getVideoTracks().forEach((t) => {
-        t.stop();
-        base?.removeTrack(t);
-      });
-      cameraStreamRef.current = null;
-      if (base) setLocalStream(new MediaStream(base.getTracks()));
-      Object.values(peersRef.current).forEach((pc) => {
-        if (pc._cameraSender) { try { pc._cameraSender.replaceTrack(null); } catch {} }
-      });
-      setHasCameraOn(false);
-      socket.emit("meeting:camera-release");
-      emitState({ hasCameraOn: false, cameraTrackId: null });
+      setCameraRequestPending(false);
+      stopLocalCamera();
     };
 
-    const onForceLowerHand = () => setHandRaised(false);
+    const onForceLowerHand = () => {
+      setHandRaised(false);
+      emitState({ handRaised: false });
+    };
 
     const onKicked = () => {
       leaveRoom();
@@ -947,10 +1108,10 @@ export function useMeetingWebRTC({ meetingCode, user, role, enabled, isHost = fa
       startScreenCapture();
     };
 
-    const onScreenShareDenied = ({ requesterSocketId }) => {
+    const onScreenShareDenied = ({ requesterSocketId, reason }) => {
       if (requesterSocketId !== socket.id) return;
       setScreenShareRequestPending(false);
-      toast.error("The host denied your screen share request");
+      toast.error(reason || "The host denied your screen share request");
     };
 
     const onScreenShareRequestCancelled = ({ requesterSocketId }) => {
@@ -973,6 +1134,55 @@ export function useMeetingWebRTC({ meetingCode, user, role, enabled, isHost = fa
       toast.error("This account joined the meeting from another tab or device.");
     };
 
+    const onCameraRequested = ({ requesterSocketId, requesterName }) => {
+      if (!isHostRef.current || requesterSocketId === socket.id) return;
+      setCameraRequest((current) => {
+        if (current && current.socketId !== requesterSocketId) {
+          socket.emit("meeting:camera-respond", { accept: false, targetSocketId: requesterSocketId });
+          return current;
+        }
+        return { socketId: requesterSocketId, name: requesterName };
+      });
+    };
+
+    const onCameraApproved = ({ requesterSocketId }) => {
+      if (requesterSocketId !== socket.id) return;
+      setCameraRequestPending(false);
+      toast.success("Host approved your camera");
+      startCameraCapture();
+    };
+
+    const onCameraDenied = ({ requesterSocketId, reason }) => {
+      if (requesterSocketId !== socket.id) return;
+      setCameraRequestPending(false);
+      toast.error(reason || "The host denied your camera request");
+    };
+
+    const onCameraRequestCancelled = ({ requesterSocketId }) => {
+      setCameraRequest((r) => (r?.socketId === requesterSocketId ? null : r));
+    };
+
+    const onSocketDisconnect = () => {
+      if (leftIntentionallyRef.current) return;
+      wasDisconnectedRef.current = true;
+      joinedRef.current = false;
+      setJoinStatus("reconnecting");
+      setNetworkStatus(navigator.onLine ? "reconnecting" : "offline");
+      if (isScreenSharingRef.current) stopScreenCapture({ silent: true });
+    };
+
+    const onWindowOffline = () => {
+      if (leftIntentionallyRef.current) return;
+      setNetworkStatus("offline");
+    };
+
+    const onWindowOnline = () => {
+      if (leftIntentionallyRef.current) return;
+      setNetworkStatus("reconnecting");
+      if (socket.disconnected) socket.connect();
+      else setNetworkStatus("online");
+    };
+
     // ── BUG 1 FIX: Reconnect flow ─────────────────────────────────────────
     // When the socket reconnects (network blip, laptop sleep/wake), the server
     // assigns a new socket ID. Every other peer has already torn down their
@@ -981,23 +1191,29 @@ export function useMeetingWebRTC({ meetingCode, user, role, enabled, isHost = fa
     //   2. Rejoin the room (server sends us fresh existing-peers list)
     //   3. The onExistingPeers handler creates new peer connections with correct IDs
     const onSocketReconnect = () => {
-      if (!joinPayloadRef.current) return;
+      if (leftIntentionallyRef.current || !joinPayloadRef.current) return;
+      if (!wasDisconnectedRef.current) {
+        setNetworkStatus("online");
+        return;
+      }
+      wasDisconnectedRef.current = false;
+      setNetworkStatus("online");
+      setJoinStatus("reconnecting");
+      restoreMeetingStateRef.current = true;
       console.log("[WebRTC] socket reconnected — closing stale peers and rejoining");
 
       // Close stale connections
-      Object.values(peersRef.current).forEach((pc) => {
-        clearTimeout(pc._restartTimer);
-        clearTimeout(pc._giveupTimer);
-        try { pc.close(); } catch {}
-      });
-      peersRef.current = {};
-      iceCandidateQueueRef.current.clear();
-      remoteStreamsRef.current.clear();
+      Object.keys(peersRef.current).forEach(closeAndRemovePeer);
       setRemoteStreams({});
 
       // Rejoin — server will send meeting:existing-peers with fresh socket IDs
+      clearTimeout(joinTimeoutRef.current);
+      joinTimeoutRef.current = setTimeout(() => {
+        if (joinedRef.current || leftIntentionallyRef.current) return;
+        setJoinStatus("error");
+        setConnectionError("Reconnection timed out. Check your internet and retry.");
+      }, 12000);
       socket.emit("meeting:join-room", joinPayloadRef.current);
-      toast.success("Reconnected to meeting");
     };
 
     socket.on("meeting:existing-peers",              onExistingPeers);
@@ -1019,9 +1235,20 @@ export function useMeetingWebRTC({ meetingCode, user, role, enabled, isHost = fa
     socket.on("meeting:screen-share-request-cancelled", onScreenShareRequestCancelled);
     socket.on("meeting:screen-share-force-stop",     onScreenShareForceStop);
     socket.on("meeting:duplicate-session",           onDuplicateSession);
+    socket.on("meeting:camera-requested",            onCameraRequested);
+    socket.on("meeting:camera-approved",             onCameraApproved);
+    socket.on("meeting:camera-denied",               onCameraDenied);
+    socket.on("meeting:camera-request-cancelled",    onCameraRequestCancelled);
+    socket.on("disconnect",                          onSocketDisconnect);
     socket.on("connect",                             onSocketReconnect);
+    window.addEventListener("offline", onWindowOffline);
+    window.addEventListener("online", onWindowOnline);
 
     return () => {
+      clearTimeout(joinTimeoutRef.current);
+      joinTimeoutRef.current = null;
+      window.removeEventListener("offline", onWindowOffline);
+      window.removeEventListener("online", onWindowOnline);
       socket.off("meeting:existing-peers",              onExistingPeers);
       socket.off("meeting:user-joined",                 onUserJoined);
       socket.off("meeting:offer",                       onOffer);
@@ -1041,6 +1268,11 @@ export function useMeetingWebRTC({ meetingCode, user, role, enabled, isHost = fa
       socket.off("meeting:screen-share-request-cancelled", onScreenShareRequestCancelled);
       socket.off("meeting:screen-share-force-stop",     onScreenShareForceStop);
       socket.off("meeting:duplicate-session",           onDuplicateSession);
+      socket.off("meeting:camera-requested",            onCameraRequested);
+      socket.off("meeting:camera-approved",             onCameraApproved);
+      socket.off("meeting:camera-denied",               onCameraDenied);
+      socket.off("meeting:camera-request-cancelled",    onCameraRequestCancelled);
+      socket.off("disconnect",                          onSocketDisconnect);
       socket.off("connect",                             onSocketReconnect);
       leaveRoom();
       startedRef.current    = false;
@@ -1063,20 +1295,22 @@ export function useMeetingWebRTC({ meetingCode, user, role, enabled, isHost = fa
     speakingParticipants,
     presenterId,
     connectionError,
+    joinStatus,
+    networkStatus,
     screenShareRequest,
     screenShareRequestPending,
+    cameraRequest,
+    cameraRequestPending,
     toggleMute,
     toggleCamera,
     toggleScreenShare,
     respondToScreenShareRequest,
     cancelScreenShareRequest,
+    respondToCameraRequest,
+    cancelCameraRequest,
     toggleHand,
     hostAction,
     leaveRoom,
-    retryJoin: () => {
-      if (!joinPayloadRef.current) return;
-      setConnectionError("");
-      socket.emit("meeting:join-room", joinPayloadRef.current);
-    },
+    retryJoin,
   };
 }

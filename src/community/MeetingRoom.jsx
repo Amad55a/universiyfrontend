@@ -14,16 +14,10 @@
  *   5. AI Assistant
  * - Moved "Files" to the toolbar (bottom Controls) as a separate modal.
  * - Moved "Focus Timer" to the top meeting toolbar (CompactFocusTimer).
- * - Implemented the requested responsive Layout Engine:
- *   • 1 participant: Centered 16:9 box, max-width 800px.
- *   • 2 participants: 50/50 horizontal split.
- *   • 3-4: 2x2 grid.
- *   • 5-9: 3x3 grid.
- *   • 10-16: 4x4 grid.
- *   • 17+: filmstrip.
- *   • Presentation mode: shared screen fills the top, all camera tiles
- *     (presenter included) sit in a single horizontal strip underneath —
- *     the screen always has the highest visual priority.
+ * - Responsive layout shows up to four participant cards in the main area;
+ *   additional participants remain accessible from the count and people panel.
+ * - Presentation mode gives the shared screen the main stage and pins the
+ *   presenter in a small tile without duplicating them in the participant grid.
  * - Classroom screen-share permission flow:
  *   • Only the host can start sharing immediately.
  *   • A student's request notifies the host, who can Accept/Deny.
@@ -31,7 +25,7 @@
  *     — only one screen is ever live at a time.
  */
 import React, {
-  useState, useEffect, useRef, useCallback, useMemo,
+  useState, useEffect, useCallback, useMemo,
 } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
@@ -44,7 +38,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
-import { useTheme } from "@/hooks/useTheme";
 import { useLanguage } from "@/hooks/useLanguage";
 import socket from "@/socket.js";
 
@@ -122,7 +115,7 @@ function CtrlBtn({ onClick, active, danger, pending, label, badge, children, dis
 // ─────────────────────────────────────────────────────────────────────────────
 // Settings Modal — green/white/black only
 // ─────────────────────────────────────────────────────────────────────────────
-function SettingsModal({ open, onClose, meeting, isHost, onToggleLock, onToggleScreenShare }) {
+function SettingsModal({ open, onClose, meeting, isHost, onToggleLock }) {
   const [devices, setDevices] = useState({ cameras: [], mics: [] });
   const [noiseSuppression, setNoiseSuppression] = useState(true);
   const [hdVideo, setHdVideo] = useState(true);
@@ -262,7 +255,7 @@ function FilesModal({ open, onClose, isHost, userName, meetingCode, sharedFiles,
 // Host/teacher  → full attendance dashboard (university ID, time stayed, CSV)
 // Student       → "You left" banner + downloadable notes & shared resources
 // ─────────────────────────────────────────────────────────────────────────────
-function SummaryScreen({ meeting, participants, duration, onReturn, attendanceLog = [], notes = "", files = [], isHost = false, user = null }) {
+function SummaryScreen({ meeting, duration, onReturn, attendanceLog = [], notes = "", files = [], isHost = false, user = null, endedByHost = false }) {
   const fmtDur = (s) => {
     if (!s) return "< 1m";
     const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
@@ -273,11 +266,11 @@ function SummaryScreen({ meeting, participants, duration, onReturn, attendanceLo
     return parts.join(" ");
   };
 
-  const sorted = [...attendanceLog].sort((a, b) =>
+  const sorted = useMemo(() => [...attendanceLog].sort((a, b) =>
     (a.universityId ?? "").localeCompare(b.universityId ?? "")
-  );
+  ), [attendanceLog]);
 
-  const exportCSV = () => {
+  const exportCSV = useCallback(() => {
     const headers = ["University ID", "Name", "Role", "Time Stayed", "Joined At", "Left At"];
     const rows = sorted.map((p) => [
       p.universityId || "N/A",
@@ -293,7 +286,7 @@ function SummaryScreen({ meeting, participants, duration, onReturn, attendanceLo
     a.download = `attendance_${meeting?.meetingCode || "class"}.csv`;
     a.click();
     toast.success("CSV exported");
-  };
+  }, [meeting, sorted]);
 
   const exportText = () => {
     const lines = [
@@ -332,8 +325,8 @@ function SummaryScreen({ meeting, participants, duration, onReturn, attendanceLo
       name: user?.name || "N/A",
       role: "participant",
       totalDurationSeconds: duration,
-      joinedAt: new Date(Date.now() - duration * 1000).toISOString(),
-      leftAt: new Date().toISOString()
+      joinedAt: null,
+      leftAt: null,
     };
     const lines = [
       `Personal Attendance Record`,
@@ -359,7 +352,7 @@ function SummaryScreen({ meeting, participants, duration, onReturn, attendanceLo
     if (isHost && sorted.length > 0) {
       exportCSV();
     }
-  }, [isHost, sorted.length]);
+  }, [isHost, sorted.length, exportCSV]);
 
   return (
     <div className="fixed inset-0 bg-white dark:bg-[#0d0d0d] text-black dark:text-white flex flex-col items-center justify-start z-50 p-4 sm:p-8 overflow-y-auto">
@@ -368,9 +361,11 @@ function SummaryScreen({ meeting, participants, duration, onReturn, attendanceLo
           <div className="w-16 h-16 rounded-full bg-[#2C2DE0] flex items-center justify-center mx-auto shadow-lg shadow-[#2C2DE0]/30">
             <CheckCircle2 size={32} className="text-white" />
           </div>
-          {isHost ? (
+          {endedByHost || isHost ? (
             <>
-              <h1 className="text-2xl sm:text-3xl font-black tracking-tight">Session Ended</h1>
+              <h1 className="text-2xl sm:text-3xl font-black tracking-tight">
+                {endedByHost ? "Meeting has ended" : "Session Ended"}
+              </h1>
               <p className="text-black/50 dark:text-white/50 text-sm">{meeting?.title} · {meeting?.course}</p>
             </>
           ) : (
@@ -573,14 +568,15 @@ export default function MeetingRoom() {
   const { code } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { isDark } = useTheme();
   const { t } = useLanguage();
 
   const [meeting, setMeeting] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [loadingMessage, setLoadingMessage] = useState("Joining room…");
+  const [meetingLoadError, setMeetingLoadError] = useState("");
+  const [loadingMessage, setLoadingMessage] = useState("Joining meeting…");
   const [timer, setTimer] = useState(0);
   const [showSummary, setShowSummary] = useState(false);
+  const [endedByHost, setEndedByHost] = useState(false);
   const [pinned, setPinned] = useState(null); // socketId
   const [sidebarOpen, setSidebarOpen] = useState(() =>
     typeof window === "undefined" ||
@@ -628,42 +624,59 @@ export default function MeetingRoom() {
     meetingCode: code,
     user,
     role: localRole,
-    enabled: Boolean(meeting && !loading),
+    enabled: Boolean(meeting && !showSummary),
     isHost,
   });
+  const leaveMeetingRoom = webrtc.leaveRoom;
+  const toggleMeetingMute = webrtc.toggleMute;
+  const toggleMeetingCamera = webrtc.toggleCamera;
+  const toggleMeetingHand = webrtc.toggleHand;
+  const sendMeetingHostAction = webrtc.hostAction;
+  const respondToScreenShareRequest = webrtc.respondToScreenShareRequest;
+  const pendingScreenShareRequest = webrtc.screenShareRequest;
 
-  const triggerShowSummary = useCallback((message = "Leaving meeting…") => {
+  const triggerShowSummary = useCallback((message = "Leaving meeting…", { hostEnded = false } = {}) => {
+    setEndedByHost(hostEnded);
     setLoadingMessage(message);
-    setLoading(true);
-    setTimeout(async () => {
-      try {
-        const r = await getMeetingByCode(code);
-        if (r.success) {
-          setMeeting(r.meeting);
-        }
-      } catch (err) {
+    setShowSummary(true);
+    getMeetingByCode(code)
+      .then((r) => {
+        if (r.success) setMeeting(r.meeting);
+      })
+      .catch((err) => {
         console.error("Error fetching final meeting details:", err);
-      } finally {
-        setLoading(false);
-        setShowSummary(true);
-      }
-    }, 1200);
+      });
   }, [code]);
 
   // ─── Load meeting ─────────────────────────────────────────────────────────
   const loadMeeting = useCallback(async () => {
+    setLoading(true);
+    setMeetingLoadError("");
+    setMeeting(null);
     try {
       const r = await getMeetingByCode(code);
       if (!r.success) throw new Error("not found");
-      setMeeting(r.meeting);
-      if (!r.meeting.isHost) await joinMeeting(code).catch(() => { });
-    } catch {
-      toast.error("Meeting not found or access denied");
-      navigate("/community/meetings");
+      if (r.meeting.endedAt) {
+        setMeeting(r.meeting);
+        setEndedByHost(true);
+        setShowSummary(true);
+        return;
+      }
+      let joinedMeeting = r.meeting;
+      if (!r.meeting.isHost) {
+        const joined = await joinMeeting(code);
+        if (!joined.success) throw new Error("Unable to join this meeting.");
+        joinedMeeting = joined.meeting || r.meeting;
+      }
+      setMeeting(joinedMeeting);
+    } catch (error) {
+      const message = error.response?.data?.message || error.message || "Unable to load this meeting.";
+      setMeetingLoadError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
-  }, [code, navigate]);
+  }, [code]);
 
   useEffect(() => { loadMeeting(); }, [loadMeeting]);
 
@@ -674,9 +687,9 @@ export default function MeetingRoom() {
     });
     const offE = onMeetingEnded((p) => {
       if (p?.meetingCode?.toUpperCase() === code?.toUpperCase()) {
-        toast.info("Meeting ended by the host");
-        webrtc.leaveRoom();
-        triggerShowSummary("Meeting ended. Preparing summary…");
+        toast.info("Meeting has ended");
+        leaveMeetingRoom();
+        triggerShowSummary("Meeting has ended", { hostEnded: true });
       }
     });
     const onKicked = () => {
@@ -695,7 +708,7 @@ export default function MeetingRoom() {
       window.removeEventListener("meeting:kicked", onKicked);
       socket.off("meeting:force-tab", onForceTab);
     };
-  }, [code, navigate, webrtc, triggerShowSummary]);
+  }, [code, navigate, leaveMeetingRoom, triggerShowSummary]);
 
   // ─── Timer ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -709,14 +722,14 @@ export default function MeetingRoom() {
     const onKey = (e) => {
       const tag = document.activeElement?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA") return;
-      if (e.key === "m" || e.key === "M") webrtc.toggleMute();
-      if (e.key === "c" || e.key === "C") webrtc.toggleCamera();
-      if (e.key === "h" || e.key === "H") webrtc.toggleHand();
+      if (e.key === "m" || e.key === "M") toggleMeetingMute();
+      if (e.key === "c" || e.key === "C") toggleMeetingCamera();
+      if (e.key === "h" || e.key === "H") toggleMeetingHand();
       if (e.key === "Escape") setSidebarOpen(false);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [webrtc]);
+  }, [toggleMeetingMute, toggleMeetingCamera, toggleMeetingHand]);
 
   // ─── Unread chat badge + sound ─────────────────────────────────────────────
   useEffect(() => {
@@ -730,8 +743,8 @@ export default function MeetingRoom() {
   }, [activeTab]);
 
   const handleHostAction = useCallback((action, sid, uid) => {
-    webrtc.hostAction(action, sid, uid);
-  }, [webrtc]);
+    sendMeetingHostAction(action, sid, uid);
+  }, [sendMeetingHostAction]);
 
   const handleStartMeeting = async () => {
     try {
@@ -745,7 +758,7 @@ export default function MeetingRoom() {
     try {
       await endMeeting(meeting._id);
       webrtc.leaveRoom();
-      triggerShowSummary("Ending meeting…");
+      triggerShowSummary("Meeting has ended", { hostEnded: true });
     } catch { toast.error("Failed to end meeting"); }
   };
 
@@ -769,33 +782,19 @@ export default function MeetingRoom() {
   // ─── Screen-share permission handlers (host side) ─────────────────────────
   // Accepting a request while the host is already presenting stops the host's
   // own share first — the app never allows two live screens at once.
+  const activePresenter = webrtc.participants.find((p) => p.isScreenSharing);
   const handleAcceptScreenShareRequest = useCallback(() => {
-    if (!webrtc.screenShareRequest) return;
-
-    const requesterSocketId = webrtc.screenShareRequest.socketId;
-
-    // Stop the host's own share if it's live.
-    if (webrtc.isScreenSharing) {
-      webrtc.toggleScreenShare();
-    }
-
-    // Stop any OTHER participant currently presenting (this was the missing check).
-    const activePresenter = webrtc.participants.find(
-      (p) => p.isScreenSharing && p.socketId !== requesterSocketId
-    );
+    if (!pendingScreenShareRequest) return;
     if (activePresenter) {
-      socket.emit("meeting:relay-event", {
-        event: "meeting:screen-share-force-stop",
-        payload: { targetSocketId: activePresenter.socketId },
-      });
+      toast.info("Stop the current screen share before approving another presenter.");
+      return;
     }
-
-    webrtc.respondToScreenShareRequest(true);
-  }, [webrtc]);
+    respondToScreenShareRequest(true);
+  }, [activePresenter, pendingScreenShareRequest, respondToScreenShareRequest]);
 
   const handleDenyScreenShareRequest = useCallback(() => {
-    webrtc.respondToScreenShareRequest(false);
-  }, [webrtc]);
+    respondToScreenShareRequest(false);
+  }, [respondToScreenShareRequest]);
 
   const handleScreenShareClick = () => {
     if (!meeting?.allowScreenShare && !isHost) {
@@ -826,7 +825,8 @@ export default function MeetingRoom() {
       handRaised: webrtc.handRaised,
       isScreenSharing: false,
       universityId: user?.universityId,
-      hasVideo: webrtc.hasCameraOn,
+          hasVideo: webrtc.hasCameraOn,
+          connectionStatus: "connected",
       isSpeaking: webrtc.speakingParticipants?.["local"] ?? false,
       isPresenter: false,
     });
@@ -880,7 +880,8 @@ export default function MeetingRoom() {
           handRaised: p.handRaised,
           isScreenSharing: false,
           universityId: p.universityId,
-          hasVideo: !!cameraTrack,
+          hasVideo: Boolean(p.hasCameraOn),
+          connectionStatus: p.connectionStatus || "connected",
           isSpeaking: webrtc.speakingParticipants?.[p.socketId] ?? false,
           isPresenter: false,
         });
@@ -922,6 +923,7 @@ export default function MeetingRoom() {
     webrtc.hasCameraOn,
     webrtc.handRaised,
     webrtc.isScreenSharing,
+    webrtc.screenStream,
     webrtc.speakingParticipants,
     user,
     localRole,
@@ -939,8 +941,8 @@ export default function MeetingRoom() {
     : focusTile?.socketId?.endsWith("_screen")
       ? focusTile.socketId.slice(0, -"_screen".length)
       : null;
-  const focusOwnerCamera = focusOwnerSocketId
-    ? allTiles.find((tile) => tile.socketId === focusOwnerSocketId && tile.hasVideo)
+  const presenterTile = focusOwnerSocketId
+    ? allTiles.find((tile) => tile.socketId === focusOwnerSocketId && !tile.isScreenSharing)
     : null;
 
   // Filter out local screen share from grid to prevent infinite mirroring
@@ -948,23 +950,15 @@ export default function MeetingRoom() {
     return allTiles.filter((t) => t.socketId !== "local_screen" || pinned === "local_screen");
   }, [allTiles, pinned]);
 
-  // Camera strip shown under the shared screen — every participant's camera
-  // (including the presenter's) rides in one horizontal row underneath.
-  const stripTiles = useMemo(() => {
-    if (!focusTile) return [];
-    const focusedOwnerId = focusTile.socketId === "local_screen"
-      ? "local"
-      : focusTile.socketId.endsWith("_screen")
-        ? focusTile.socketId.slice(0, -"_screen".length)
-        : null;
-    return allTiles.filter((t) =>
-      t.socketId !== focusTile.socketId
-      && t.socketId !== focusedOwnerId
-      && (t.socketId !== "local_screen" || pinned === "local_screen")
-    );
-  }, [allTiles, focusTile, pinned]);
+  const visibleGridTiles = useMemo(() => {
+    return gridTiles
+      .filter((t) => !t.isScreenSharing)
+      .filter((t) => !focusOwnerSocketId || t.socketId !== focusOwnerSocketId)
+      .slice(0, 4);
+  }, [gridTiles, focusOwnerSocketId]);
 
-  const visibleGridTiles = gridTiles.slice(0, 4);
+  const someoneElseSharing = webrtc.participants.some((p) => p.isScreenSharing) && !webrtc.isScreenSharing;
+  const cameraBlockedByShare = someoneElseSharing;
 
   // Keep the main stage to four predictable video tiles; all attendees remain
   // available in the participant panel.
@@ -974,20 +968,10 @@ export default function MeetingRoom() {
       : "grid-cols-1 sm:grid-cols-2 max-w-6xl";
   }, [visibleGridTiles.length]);
 
-  if (loading) {
-    return (
-      <div className="fixed inset-0 bg-black flex flex-col items-center justify-center z-50 gap-4">
-        <Spinner size={36} className="text-[#2C2DE0]" />
-        <p className="text-white/50 text-sm font-semibold animate-pulse">{loadingMessage}</p>
-      </div>
-    );
-  }
-
   if (showSummary) {
     return (
       <SummaryScreen
         meeting={meeting}
-        participants={webrtc.participants}
         duration={timer}
         onReturn={() => navigate("/community/meetings")}
         attendanceLog={meeting?.attendanceLog ?? []}
@@ -995,7 +979,38 @@ export default function MeetingRoom() {
         files={meetingFiles}
         isHost={isHost}
         user={user}
+        endedByHost={endedByHost}
       />
+    );
+  }
+
+  const joining = loading || Boolean(meeting) && (
+    webrtc.joinStatus === "joining" || webrtc.joinStatus === "idle"
+  );
+  if (joining && !webrtc.connectionError) {
+    return (
+      <div className="fixed inset-0 bg-black flex flex-col items-center justify-center z-50 gap-4 px-6">
+        <Spinner size={36} className="text-[#2C2DE0]" />
+        <p className="text-white/50 text-sm font-semibold animate-pulse">{loadingMessage}</p>
+      </div>
+    );
+  }
+
+  if (!loading && !meeting) {
+    return (
+      <div className="fixed inset-0 bg-black flex flex-col items-center justify-center z-50 gap-4 px-6 text-center">
+        <AlertCircle size={32} className="text-red-400" />
+        <p className="text-white text-sm font-semibold">
+          {meetingLoadError || webrtc.connectionError || "Unable to load this meeting."}
+        </p>
+        <button
+          type="button"
+          onClick={loadMeeting}
+          className="inline-flex items-center gap-2 rounded-xl bg-[#2C2DE0] px-4 py-2 text-xs font-bold text-white"
+        >
+          <RefreshCw size={14} /> Retry
+        </button>
+      </div>
     );
   }
 
@@ -1065,6 +1080,12 @@ export default function MeetingRoom() {
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* ── Video Area ────────────────────────────────────────────────────── */}
         <main className="flex-1 flex flex-col min-w-0 relative bg-gray-100 dark:bg-black overflow-hidden">
+          {(webrtc.networkStatus === "offline" || webrtc.networkStatus === "reconnecting" || webrtc.joinStatus === "reconnecting") && (
+            <div role="status" className="absolute left-1/2 top-4 z-40 flex max-w-[calc(100%-2rem)] -translate-x-1/2 items-center gap-2 rounded-xl border border-amber-400/40 bg-black/90 px-4 py-2.5 text-xs font-bold text-amber-200 shadow-lg">
+              <Wifi size={14} />
+              {webrtc.networkStatus === "offline" ? "No internet connection" : "Reconnecting…"}
+            </div>
+          )}
           {webrtc.connectionError && (
             <div role="alert" className="absolute left-1/2 top-4 z-30 flex max-w-[calc(100%-2rem)] -translate-x-1/2 items-center gap-3 rounded-xl border border-red-300 bg-white px-4 py-3 text-sm text-red-700 shadow-lg dark:border-red-900 dark:bg-[#111] dark:text-red-300">
               <span>{webrtc.connectionError}</span>
@@ -1132,19 +1153,71 @@ export default function MeetingRoom() {
               <Monitor size={14} className="text-[#2C2DE0] shrink-0" />
               <span className="text-white text-xs font-semibold">
                 {webrtc.screenShareRequest.name} wants to share their screen
-                {webrtc.isScreenSharing ? " — stop your share to approve" : ""}
+                {activePresenter ? ` — ${activePresenter.name} must stop sharing first` : ""}
               </span>
+              {activePresenter && (
+                <button
+                  onClick={() => {
+                    if (activePresenter.socketId === socket.id) {
+                      webrtc.toggleScreenShare();
+                    } else {
+                      socket.emit("meeting:relay-event", {
+                        event: "meeting:screen-share-force-stop",
+                        payload: { targetSocketId: activePresenter.socketId },
+                      });
+                    }
+                  }}
+                  className="px-3 py-2 rounded-xl bg-white/10 text-white text-xs font-bold"
+                >
+                  Stop current share
+                </button>
+              )}
               <button
                 onClick={handleAcceptScreenShareRequest}
+                disabled={Boolean(activePresenter)}
                 className="px-4 py-2 rounded-xl bg-[#2C2DE0] text-white text-xs font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150"
               >
-                {webrtc.isScreenSharing ? "Stop & Accept" : "Accept"}
+                Accept
               </button>
               <button
                 onClick={handleDenyScreenShareRequest}
                 className="px-4 py-2 rounded-xl bg-[#2C2DE0] text-white text-xs font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150"
               >
                 Deny
+              </button>
+            </div>
+          )}
+
+          {isHost && webrtc.cameraRequest && (
+            <div className="absolute top-16 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 bg-black/95 border border-[#2C2DE0]/40 px-4 py-2.5 rounded-2xl shadow-xl max-w-[92vw]">
+              <Video size={14} className="text-[#2C2DE0] shrink-0" />
+              <span className="text-white text-xs font-semibold">
+                {webrtc.cameraRequest.name} wants to turn on their camera
+              </span>
+              <button
+                onClick={() => webrtc.respondToCameraRequest(true)}
+                className="px-4 py-2 rounded-xl bg-[#2C2DE0] text-white text-xs font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150"
+              >
+                Accept
+              </button>
+              <button
+                onClick={() => webrtc.respondToCameraRequest(false)}
+                className="px-4 py-2 rounded-xl bg-white/10 text-white text-xs font-bold"
+              >
+                Deny
+              </button>
+            </div>
+          )}
+
+          {!isHost && webrtc.cameraRequestPending && (
+            <div className="absolute top-16 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 bg-black/95 border border-[#2C2DE0]/40 px-4 py-2.5 rounded-2xl shadow-xl">
+              <Video size={14} className="text-[#2C2DE0] animate-pulse shrink-0" />
+              <span className="text-white text-xs font-semibold">Waiting for the host to approve your camera…</span>
+              <button
+                onClick={webrtc.cancelCameraRequest}
+                className="px-4 py-2 rounded-xl bg-[#2C2DE0] text-white text-xs font-bold"
+              >
+                Cancel
               </button>
             </div>
           )}
@@ -1165,8 +1238,8 @@ export default function MeetingRoom() {
 
           {/* ── Layout Engine: Screen Sharing Focus Layout ── */}
           {focusTile ? (
-            <div className="flex-1 flex flex-col p-4 gap-6 min-h-0 bg-gray-50 dark:bg-black/95">
-              <div className="relative mx-auto aspect-video max-h-[70%] min-h-0 w-full flex-[2]">
+            <div className="flex-1 flex flex-col p-3 sm:p-4 min-h-0 bg-gray-50 dark:bg-black/95">
+              <div className="relative mx-auto min-h-0 w-full flex-1 max-w-7xl">
                 <VideoTile
                   stream={focusTile.stream}
                   pipStream={focusTile.pipStream}
@@ -1178,6 +1251,7 @@ export default function MeetingRoom() {
                   handRaised={focusTile.handRaised}
                   isScreenSharing={focusTile.isScreenSharing}
                   isSpeaking={focusTile.isSpeaking}
+                  hasVideo
                   isPinned={focusTile.socketId === pinned}
                   onPin={() =>
                     setPinned((p) =>
@@ -1188,18 +1262,20 @@ export default function MeetingRoom() {
                   socketId={focusTile.socketId}
                   presenterId={webrtc.presenterId}
                 />
-                {focusOwnerCamera && (
-                  <div className="absolute left-3 top-3 z-20 aspect-video w-28 overflow-hidden rounded-xl border border-white/30 shadow-xl sm:w-44">
+                {presenterTile && (
+                  <div className="absolute left-2 top-2 z-20 aspect-video w-24 overflow-hidden rounded-xl border border-white/30 shadow-xl sm:left-3 sm:top-3 sm:w-40">
                     <VideoTile
                       compact
-                      stream={focusOwnerCamera.stream}
-                      name={focusOwnerCamera.name}
-                      photo={focusOwnerCamera.photo}
-                      role={focusOwnerCamera.role}
-                      muted={focusOwnerCamera.muted}
-                      isLocal={focusOwnerCamera.isLocal}
-                      isSpeaking={focusOwnerCamera.isSpeaking}
-                      socketId={focusOwnerCamera.socketId}
+                      stream={presenterTile.stream}
+                      name={presenterTile.name}
+                      photo={presenterTile.photo}
+                      role={presenterTile.role}
+                      muted={presenterTile.muted}
+                      isLocal={presenterTile.isLocal}
+                      isSpeaking={presenterTile.isSpeaking}
+                      hasVideo={presenterTile.hasVideo}
+                      connectionStatus={presenterTile.connectionStatus}
+                      socketId={presenterTile.socketId}
                       presenterId={webrtc.presenterId}
                     />
                   </div>
@@ -1210,65 +1286,14 @@ export default function MeetingRoom() {
                     setSidebarOpen(true);
                   }}
                   title="See who's in the meeting"
-                  className="absolute top-3 right-12 z-10 flex items-center gap-2 pl-1.5 pr-3 py-1.5 rounded-full bg-black/70 hover:bg-black/85 border border-white/15 backdrop-blur-sm transition-colors shadow-lg"
+                  className="absolute top-3 right-3 z-10 flex items-center gap-2 pl-1.5 pr-3 py-1.5 rounded-full bg-black/70 hover:bg-black/85 border border-white/15 backdrop-blur-sm transition-colors shadow-lg"
                 >
-                  <div className="flex -space-x-2">
-                    {allTiles
-                      .filter((t) => !t.isScreenSharing)
-                      .slice(0, 3)
-                      .map((t) => (
-                        <div
-                          key={t.socketId}
-                          className="w-5 h-5 rounded-full bg-[#2C2DE0] border-2 border-black overflow-hidden flex items-center justify-center shrink-0"
-                        >
-                          {t.photo ? (
-                            <img src={t.photo} alt="" className="w-full h-full object-cover" />
-                          ) : (
-                            <span className="text-white text-[8px] font-black">
-                              {(t.name || "?").charAt(0).toUpperCase()}
-                            </span>
-                          )}
-                        </div>
-                      ))}
-                  </div>
+                  <Users size={14} className="text-white" />
                   <span className="text-white text-[11px] font-bold whitespace-nowrap">
-                    {webrtc.participants.length} in meeting
+                    {Math.max(webrtc.participants.length, 1)}
                   </span>
                 </button>
               </div>
-              <div className="h-px w-full bg-gray-200 dark:bg-white dark:bg-gray-900/10 shrink-0" />
-              <div className="flex h-24 shrink-0 gap-3 overflow-x-auto sm:h-36">
-                {stripTiles.map((tile) => (
-                  <div
-                    key={tile.socketId}
-                    className="h-full w-32 shrink-0 sm:w-48"
-                  >
-                    <VideoTile
-                      compact
-                      stream={tile.stream}
-                      name={tile.name}
-                      photo={tile.photo}
-                      role={tile.role}
-                      muted={tile.muted}
-                      isLocal={tile.isLocal}
-                      handRaised={tile.handRaised}
-                      isScreenSharing={tile.isScreenSharing}
-                      isSpeaking={tile.isSpeaking}
-                      isPinned={tile.socketId === pinned}
-                      onPin={() =>
-                        setPinned((p) =>
-                          p === tile.socketId ? null : tile.socketId
-                        )
-                      }
-                      universityId={tile.universityId}
-                      socketId={tile.socketId}
-                      presenterId={webrtc.presenterId}
-                    />
-                  </div>
-                ))}
-
-              </div>
-
             </div>
 
           ) : (
@@ -1301,6 +1326,8 @@ export default function MeetingRoom() {
                       handRaised={tile.handRaised}
                       isScreenSharing={tile.isScreenSharing}
                       isSpeaking={tile.isSpeaking}
+                      hasVideo={tile.hasVideo}
+                      connectionStatus={tile.connectionStatus}
                       isPinned={tile.socketId === pinned}
                       onPin={() => setPinned((current) => current === tile.socketId ? null : tile.socketId)}
                       universityId={tile.universityId}
@@ -1329,7 +1356,7 @@ export default function MeetingRoom() {
             <>
               {/* Tab bar headers */}
               <div className="flex border-b border-gray-200 dark:border-white/10 shrink-0 overflow-x-auto">
-                {TABS.map(({ id, icon: Icon, label }) => (
+                {TABS.map(({ id, icon, label }) => (
                   <button
                     key={id}
                     onClick={() => {
@@ -1350,7 +1377,7 @@ export default function MeetingRoom() {
                       }
                     `}
                   >
-                    <Icon size={14} />
+                    {React.createElement(icon, { size: 14 })}
                     <span className="hidden sm:block truncate max-w-[70px]">{label}</span>
                     {id === "chat" && unread > 0 && (
                       <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-[#2C2DE0] text-white text-[8px] font-black flex items-center justify-center">
@@ -1425,7 +1452,17 @@ export default function MeetingRoom() {
               id="btn-cam"
               onClick={webrtc.toggleCamera}
               active={webrtc.hasCameraOn}
-              label={webrtc.hasCameraOn ? "Stop Cam (C)" : "Start Cam (C)"}
+              pending={webrtc.cameraRequestPending}
+              disabled={cameraBlockedByShare && !webrtc.hasCameraOn}
+              label={
+                webrtc.hasCameraOn
+                  ? "Stop Cam (C)"
+                  : webrtc.cameraRequestPending
+                    ? "Requesting…"
+                    : cameraBlockedByShare
+                      ? "Camera blocked"
+                      : "Start Cam (C)"
+              }
             >
               {webrtc.hasCameraOn ? <Video size={20} /> : <VideoOff size={20} />}
             </CtrlBtn>
@@ -1435,12 +1472,15 @@ export default function MeetingRoom() {
               onClick={handleScreenShareClick}
               active={webrtc.isScreenSharing}
               pending={webrtc.screenShareRequestPending}
+              disabled={someoneElseSharing}
               label={
                 webrtc.isScreenSharing
                   ? "Stop Share"
                   : webrtc.screenShareRequestPending
                     ? "Requesting…"
-                    : isHost ? "Share Screen" : "Request to Share"
+                    : someoneElseSharing
+                      ? "Share in use"
+                      : isHost ? "Share Screen" : "Request to Share"
               }
             >
               {webrtc.isScreenSharing ? <MonitorOff size={20} /> : <Monitor size={20} />}
@@ -1539,11 +1579,6 @@ export default function MeetingRoom() {
         meeting={meeting}
         isHost={isHost}
         onToggleLock={handleToggleLock}
-        onToggleScreenShare={() => {
-          updateMeetingSettings(meeting._id, { allowScreenShare: !meeting.allowScreenShare })
-            .then((r) => { if (r.success) setMeeting(r.meeting); })
-            .catch(() => { });
-        }}
       />
 
       {/* ══ FILES MODAL (Moved from sidebar) ════════════════════════════════ */}
