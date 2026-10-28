@@ -125,6 +125,11 @@ export const getCommunityUser = async (userId) => {
   return data;
 };
 
+export const searchCommunityUsers = async (query) => {
+  const { data } = await api.get("/chat/users/search", { params: { q: query } });
+  return data;
+};
+
 // FEATURE 1 (Profile "Posts" tab): fetch a given user's own posts.
 export const getUserPosts = async (userId, page = 1, limit = 20) => {
   const { data } = await api.get(`/communityusers/${userId}/posts?page=${page}&limit=${limit}`);

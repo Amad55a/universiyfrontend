@@ -1,14 +1,16 @@
 // Main community feed — Facebook-style with React Query infinite scroll
 // CreatePostComposer removed from top of feed; posting happens via header pencil icon
 
-import React, { useEffect, useRef, useCallback } from "react";
-import { useOutletContext, useSearchParams } from "react-router-dom";
+import React, { useEffect, useRef, useCallback, useState } from "react";
+import { useNavigate, useOutletContext, useSearchParams } from "react-router-dom";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/hooks/useLanguage";
 import PostCard from "@/community/PostCard";
 import { Spinner, BTN_PRIMARY, BTN_SECONDARY } from "@/community/ui";
-import { getFeed, searchPosts } from "@/api/Communityapi";
+import { Avatar } from "@/community/ui";
+import { getFeed, searchPosts, searchCommunityUsers } from "@/api/Communityapi";
+import { Search, Users } from "lucide-react";
 
 const FEED_KEY = ["community", "feed"];
 
@@ -16,6 +18,7 @@ const Feed = () => {
   const { user } = useAuth();
   const { t } = useLanguage();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const ctx = useOutletContext() ?? {};
   const { onOpenWrite, newPost } = ctx;
 
@@ -23,12 +26,43 @@ const Feed = () => {
   const searchQuery = searchParams.get("search") || "";
   const tagFilter = searchParams.get("tag") || "";
   const loadMoreRef = useRef(null);
+  const [peopleQuery, setPeopleQuery] = useState("");
+  const [people, setPeople] = useState([]);
+  const [peopleLoading, setPeopleLoading] = useState(false);
+  const [peopleError, setPeopleError] = useState("");
+
+  useEffect(() => {
+    const query = peopleQuery.trim();
+    if (query.length < 2) {
+      setPeople([]);
+      setPeopleError("");
+      setPeopleLoading(false);
+      return undefined;
+    }
+
+    let active = true;
+    const timer = window.setTimeout(async () => {
+      setPeopleLoading(true);
+      setPeopleError("");
+      try {
+        const result = await searchCommunityUsers(query);
+        if (active) setPeople(result.users ?? []);
+      } catch {
+        if (active) setPeopleError("Could not search users. Please try again.");
+      } finally {
+        if (active) setPeopleLoading(false);
+      }
+    }, 250);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [peopleQuery]);
 
   const {
     data,
     isLoading,
     isError,
-    error,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
@@ -198,6 +232,63 @@ const Feed = () => {
 
   return (
     <div className="w-full max-w-2xl mx-auto px-0 sm:px-0">
+      <section className="mb-5 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-950">
+        <div className="mb-3 flex items-center gap-2">
+          <Users size={17} className="text-[#2C2DE0]" />
+          <h2 className="text-sm font-bold text-gray-900 dark:text-white">Find people</h2>
+        </div>
+        <label className="flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 dark:border-gray-700 dark:bg-gray-900">
+          <Search size={16} className="shrink-0 text-gray-400" />
+          <input
+            value={peopleQuery}
+            onChange={(event) => setPeopleQuery(event.target.value)}
+            placeholder="Search by name or department"
+            aria-label="Search community users"
+            className="min-w-0 flex-1 bg-transparent py-2.5 text-sm text-gray-900 outline-none placeholder:text-gray-400 dark:text-white"
+          />
+        </label>
+        {peopleQuery.trim().length > 0 && (
+          <div className="mt-2">
+            {peopleQuery.trim().length < 2 ? (
+              <p className="px-1 py-2 text-xs text-gray-500">Enter at least 2 characters.</p>
+            ) : peopleLoading ? (
+              <div className="flex items-center gap-2 px-1 py-3 text-xs text-gray-500">
+                <Spinner size={14} /> Searching…
+              </div>
+            ) : peopleError ? (
+              <p role="alert" className="px-1 py-2 text-xs text-red-500">{peopleError}</p>
+            ) : people.length ? (
+              <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+                {people.map((person) => (
+                  <li key={person._id}>
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/community/user/${person._id}`)}
+                      className="flex w-full items-center gap-3 rounded-lg px-1 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-900"
+                    >
+                      <span className="relative">
+                        <Avatar name={person.displayName ?? person.name} photo={person.photo} size={38} />
+                        {person.isOnline && <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-white bg-emerald-500 dark:border-gray-950" />}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-semibold text-gray-900 dark:text-white">
+                          {person.displayName ?? person.name}
+                        </span>
+                        <span className="block truncate text-xs text-gray-500">
+                          {[person.role, person.department].filter(Boolean).join(" · ")}
+                        </span>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="px-1 py-2 text-xs text-gray-500">No matching users found.</p>
+            )}
+          </div>
+        )}
+      </section>
+
       {/* Search/filter banner */}
       {(searchQuery || tagFilter) && (
         <div className="mb-4 px-4 py-2.5 rounded-xl bg-[#2C2DE0]/10 dark:bg-[#2C2DE0]/15 border border-[#2C2DE0]/20 dark:border-[#2C2DE0]/30">
