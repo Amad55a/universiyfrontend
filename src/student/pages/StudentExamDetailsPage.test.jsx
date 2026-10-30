@@ -156,18 +156,18 @@ describe("student browser exam launch", () => {
       });
     const { unmount } = renderDetails();
     expect(await screen.findByText(/Safe Exam Browser is required/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Download Safe Exam Browser configuration" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continue to Safe Exam Browser" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Validate token and start exam" })).not.toBeInTheDocument();
     unmount();
 
     renderDetails();
     expect(await screen.findByText(/managed browser lock/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Validate token and start exam" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Download Safe Exam Browser configuration" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Continue to Safe Exam Browser" })).not.toBeInTheDocument();
     expect(api.post).not.toHaveBeenCalled();
   });
 
-  it("downloads the authenticated student's exam-specific SEB configuration", async () => {
+  it("shows a launch dialog and opens the generated SEB configuration link", async () => {
     api.get.mockResolvedValueOnce({
       data: {
         data: {
@@ -179,33 +179,37 @@ describe("student browser exam launch", () => {
         },
       },
     });
-    api.post.mockResolvedValueOnce({ data: new Blob(["seb-config"]) });
-    vi.stubGlobal("URL", {
-      ...URL,
-      createObjectURL: vi.fn(() => "blob:seb-config"),
-      revokeObjectURL: vi.fn(),
+    api.post.mockResolvedValueOnce({
+      data: {
+        success: true,
+        data: {
+          launchUrl: "sebs://www.unicores.tech/api/v1/exams/student/config",
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        },
+      },
     });
-    const appendChild = vi.spyOn(document.body, "appendChild");
-    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
     renderDetails();
 
     fireEvent.change(await screen.findByLabelText("Exam access token"), {
       target: { value: "MIDTERM-2026" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Download Safe Exam Browser configuration" }));
+    fireEvent.click(screen.getByRole("button", { name: "Continue to Safe Exam Browser" }));
 
     await waitFor(() => {
       expect(api.post).toHaveBeenCalledWith(
         `/exams/student/${exam.id}/seb-config`,
         { token: "MIDTERM-2026" },
-        { responseType: "blob" },
       );
     });
-    expect(await screen.findByText(/Configuration downloaded/)).toBeInTheDocument();
-    expect(click).toHaveBeenCalledOnce();
-    appendChild.mockRestore();
-    click.mockRestore();
-    vi.unstubAllGlobals();
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Go to Safe Exam Browser" }))
+      .toHaveAttribute("href", "sebs://www.unicores.tech/api/v1/exams/student/config");
+    expect(screen.getByRole("link", { name: "Download Safe Exam Browser" }))
+      .toHaveAttribute("href", "https://safeexambrowser.org/download_en.html");
+    expect(document.querySelector("audio")).toHaveAttribute("src", "/cod.mp3");
+    await waitFor(() => expect(play).toHaveBeenCalledOnce());
+    play.mockRestore();
   });
 
   it("discloses configured camera or microphone monitoring before launch", async () => {

@@ -172,13 +172,7 @@ createRoot(document.getElementById('root')).render(
 
                                         <Route
                                             path="/exam-session/:examId"
-                                            element={
-                                                <PrivateRouter>
-                                                    <RoleRoute role="student">
-                                                        <StudentExamSession />
-                                                    </RoleRoute>
-                                                </PrivateRouter>
-                                            }
+                                            element={<StudentExamSession />}
                                         />
 
                                         <Route

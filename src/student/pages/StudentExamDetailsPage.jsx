@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, CalendarDays, Clock3, Loader2, ShieldCheck } from "lucide-react";
@@ -15,6 +15,10 @@ function formatDate(value) {
 export default function StudentExamDetailsPage() {
   const { examId } = useParams();
   const navigate = useNavigate();
+  const sebAudioRef = useRef(null);
+  const [sebLaunch, setSebLaunch] = useState(null);
+  const [sebLaunchAttempted, setSebLaunchAttempted] = useState(false);
+  const [sebAudioBlocked, setSebAudioBlocked] = useState(false);
   const [launchForm, setLaunchForm] = useState({
     examId: null,
     launching: false,
@@ -54,6 +58,15 @@ export default function StudentExamDetailsPage() {
     exam?.canStart && exam?.sebRequired && !exam?.security?.browserLock,
   );
 
+  useEffect(() => {
+    if (!sebLaunch || !sebAudioRef.current) return;
+    sebAudioRef.current.currentTime = 0;
+    sebAudioRef.current.play().then(
+      () => setSebAudioBlocked(false),
+      () => setSebAudioBlocked(true),
+    );
+  }, [sebLaunch]);
+
   const handleStartExam = async () => {
     if (!exam?.id || (!canStartInBrowser && !canStartInSeb) || launching) return;
     if (!accessToken.trim()) {
@@ -63,23 +76,23 @@ export default function StudentExamDetailsPage() {
     updateLaunchForm({ launching: true, launchMessage: "" });
     try {
       if (canStartInSeb) {
-        const { data: configFile } = await api.post(
+        const { data: launchResponse } = await api.post(
           `/exams/student/${exam.id}/seb-config`,
           { token: accessToken.trim() },
-          { responseType: "blob" },
         );
-        const downloadUrl = URL.createObjectURL(configFile);
-        const download = document.createElement("a");
-        download.href = downloadUrl;
-        download.download = `exam-${exam.id}.seb`;
-        document.body.appendChild(download);
-        download.click();
-        download.remove();
-        window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 60_000);
-        updateLaunchForm({
-          launchMessage: "Configuration downloaded. Open the .seb file with Safe Exam Browser to continue.",
-          launchMessageType: "info",
-        });
+        const launch = launchResponse?.data;
+        const expiresAt = Date.parse(launch?.expiresAt);
+        if (
+          typeof launch?.launchUrl !== "string" ||
+          !/^sebs?:\/\//i.test(launch.launchUrl) ||
+          !Number.isFinite(expiresAt) ||
+          expiresAt <= Date.now()
+        ) {
+          throw new Error("UniCORE could not prepare a valid Safe Exam Browser launch. Please try again.");
+        }
+        setSebLaunch({ launchUrl: launch.launchUrl, expiresAt });
+        setSebLaunchAttempted(false);
+        setSebAudioBlocked(false);
         return;
       }
 
@@ -235,7 +248,7 @@ export default function StudentExamDetailsPage() {
           {exam.sebRequired && (
             <p className="mt-3 flex items-start gap-2 text-sm text-amber-800 dark:text-amber-300">
               <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
-              Safe Exam Browser is required. Download and open the student-specific .seb configuration to start; a standard browser cannot retrieve exam questions.
+              Safe Exam Browser is required. UniCORE will securely prepare and open the exam in the desktop app; a standard browser cannot retrieve exam questions.
             </p>
           )}
           {exam.security?.browserLock && (
@@ -294,7 +307,7 @@ export default function StudentExamDetailsPage() {
               {launching
                 ? (canStartInSeb ? "Preparing SEB configuration…" : "Preparing exam session…")
                 : canStartInSeb
-                  ? "Download Safe Exam Browser configuration"
+                  ? "Continue to Safe Exam Browser"
                   : exam.attemptStatus === "in-progress"
                     ? "Validate token and resume exam"
                     : "Validate token and start exam"}
@@ -323,6 +336,98 @@ export default function StudentExamDetailsPage() {
           </div>
         )}
       </section>
+      {sebLaunch && (
+        <div
+          className="fixed inset-0 z-[12000] flex items-center justify-center bg-black/60 p-4"
+          role="presentation"
+        >
+          <section
+            aria-labelledby="seb-launch-title"
+            aria-modal="true"
+            className="w-full max-w-xl space-y-4 rounded-2xl bg-white p-6 text-gray-900 shadow-2xl dark:bg-zinc-900 dark:text-white"
+            role="dialog"
+          >
+            <h2 id="seb-launch-title" className="text-xl font-bold">
+              This exam requires Safe Exam Browser
+            </h2>
+            <p className="text-sm leading-6 text-gray-700 dark:text-zinc-300">
+              Your identity, exam eligibility, schedule, and access token have been verified.
+              Select <strong>Go to Safe Exam Browser</strong> to open this exact exam attempt.
+              You will not need to sign in or enter the exam token again.
+            </p>
+            <p className="text-sm leading-6 text-gray-700 dark:text-zinc-300">
+              If your browser asks whether to open Safe Exam Browser, choose <strong>Open Safe Exam Browser</strong> or <strong>Allow</strong>.
+            </p>
+            <audio
+              ref={sebAudioRef}
+              className="w-full"
+              controls
+              preload="auto"
+              src="/cod.mp3"
+              onPlay={() => setSebAudioBlocked(false)}
+            >
+              Your browser does not support audio playback.
+            </audio>
+            {sebAudioBlocked && (
+              <p className="text-sm text-amber-700 dark:text-amber-300">
+                Audio did not start automatically. Use the audio controls above to play the instructions.
+              </p>
+            )}
+            <div className="flex flex-col gap-3">
+              <a
+                href={sebLaunch.launchUrl}
+                onClick={(event) => {
+                  if (Date.now() >= sebLaunch.expiresAt) {
+                    event.preventDefault();
+                    setSebLaunch(null);
+                    updateLaunchForm({
+                      launchMessage: "This Safe Exam Browser link expired. Request a fresh launch to continue.",
+                    });
+                    return;
+                  }
+                  setSebLaunchAttempted(true);
+                }}
+                className="inline-flex min-h-12 items-center justify-center rounded-xl bg-[#2C2DE0] px-5 py-3 text-center font-bold text-white hover:bg-indigo-700"
+              >
+                Go to Safe Exam Browser
+              </a>
+              {sebLaunchAttempted && (
+                <p className="text-sm text-gray-600 dark:text-zinc-300" role="status">
+                  If Safe Exam Browser did not open, it may not be installed or your browser may have blocked the request. Allow the application prompt, or download SEB below.
+                </p>
+              )}
+              <a
+                href="https://safeexambrowser.org/download_en.html"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-center text-sm font-semibold text-[#2C2DE0] underline dark:text-indigo-300"
+              >
+                Download Safe Exam Browser
+              </a>
+            </div>
+            <div className="flex flex-wrap justify-end gap-3 border-t border-gray-200 pt-4 dark:border-zinc-700">
+              <button
+                type="button"
+                onClick={() => setSebLaunch(null)}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold dark:border-zinc-600"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSebLaunch(null);
+                  handleStartExam();
+                }}
+                disabled={launching}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold disabled:opacity-50 dark:border-zinc-600"
+              >
+                Request a fresh launch
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </main>
   );
 }

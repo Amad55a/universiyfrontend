@@ -67,7 +67,7 @@ describe("api client URL normalization", () => {
     );
   });
 
-  it("adds the student-specific SEB launch selector only to that exam's API requests", async () => {
+  it("does not copy SEB handoff credentials from browser storage into API headers", async () => {
     const adapter = vi.fn(async (config) => ({
       data: {},
       status: 200,
@@ -85,7 +85,7 @@ describe("api client URL normalization", () => {
     await api.get("/exams/student/507f1f77bcf86cd799439012/start");
     await api.get("/auth/me");
 
-    expect(adapter.mock.calls[0][0].headers["X-UniCORE-SEB-Launch-Token"]).toBe("a".repeat(43));
+    expect(adapter.mock.calls[0][0].headers["X-UniCORE-SEB-Launch-Token"]).toBeUndefined();
     expect(adapter.mock.calls[1][0].headers["X-UniCORE-SEB-Launch-Token"]).toBeUndefined();
     expect(adapter.mock.calls[2][0].headers["X-UniCORE-SEB-Launch-Token"]).toBeUndefined();
   });
@@ -112,7 +112,7 @@ describe("api client URL normalization", () => {
       "/api/v1/exams/student/507f1f77bcf86cd799439011/start",
     );
     expect(adapter.mock.calls[0][0].baseURL).toBe("");
-    expect(adapter.mock.calls[0][0].headers["X-UniCORE-SEB-Launch-Token"]).toBe("a".repeat(43));
+    expect(adapter.mock.calls[0][0].headers["X-UniCORE-SEB-Launch-Token"]).toBeUndefined();
   });
 
   it("routes exam session requests made through shared axios through the frontend origin", async () => {
@@ -135,7 +135,7 @@ describe("api client URL normalization", () => {
       "/api/exams/student/507f1f77bcf86cd799439011/start",
     );
     expect(adapter.mock.calls[0][0].baseURL).toBe("");
-    expect(adapter.mock.calls[0][0].headers["X-UniCORE-SEB-Launch-Token"]).toBe("a".repeat(43));
+    expect(adapter.mock.calls[0][0].headers["X-UniCORE-SEB-Launch-Token"]).toBeUndefined();
   });
 
   it("sends booking and today's-reservations requests with one API prefix", async () => {

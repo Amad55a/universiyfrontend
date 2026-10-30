@@ -146,8 +146,10 @@ export default function StudentExamSession() {
   const submitInFlightRef = useRef(false);
   const [fullscreenError, setFullscreenError] = useState("");
   const [showSubmitConfirmation, setShowSubmitConfirmation] = useState(false);
+  const [submissionComplete, setSubmissionComplete] = useState(false);
   const designSubmissionPrepareRef = useRef(new Map());
   const disarmSecurityRef = useRef(() => {});
+  const sebRedemptionRequestRef = useRef({ key: "", promise: null });
 
   const registerDesignSubmissionPreparation = useCallback((questionId, prepare) => {
     if (prepare) designSubmissionPrepareRef.current.set(questionId, prepare);
@@ -158,21 +160,26 @@ export default function StudentExamSession() {
 
   useEffect(() => {
     if (!sebLaunchToken || !examId) return;
+    const attemptKey = `${sebLaunchToken}:${sessionRetry}`;
+    let redemptionRequest = sebRedemptionRequestRef.current.key === attemptKey
+      ? sebRedemptionRequestRef.current.promise
+      : null;
+    if (!redemptionRequest) {
+      redemptionRequest = axios.post(
+        "/api/exams/student/seb-launch-token/redeem",
+        { token: sebLaunchToken },
+        { withCredentials: true },
+      );
+      sebRedemptionRequestRef.current = { key: attemptKey, promise: redemptionRequest };
+    }
 
     let cancelled = false;
     (async () => {
       try {
-        const { data } = await axios.post(
-          "/api/exams/student/seb-launch-token/redeem",
-          { token: sebLaunchToken },
-        );
+        const { data } = await redemptionRequest;
         if (String(data?.data?.examId) !== String(examId)) {
           throw new Error("The Safe Exam Browser configuration is for a different exam.");
         }
-        window.sessionStorage.setItem(
-          `unicores-seb-launch-token:${examId}`,
-          sebLaunchToken,
-        );
         if (!cancelled) {
           setSessionError("");
           navigate(location.pathname, { replace: true });
@@ -301,21 +308,24 @@ export default function StudentExamSession() {
         disarmSecurityRef.current();
         // Clear draft on successful submit
         localStorage.removeItem(draftKey(examId));
-        sessionStorage.removeItem(`unicores-seb-launch-token:${examId}`);
         if (document.fullscreenElement) document.exitFullscreen().catch(() => { });
         toast.success(
           isAuto
             ? "Exam auto-submitted."
             : `${t("exam.submit") || "Exam"} submitted successfully!`
         );
-        navigate("/dashboard");
+        if (exam?.security?.sebRequired) {
+          setSubmissionComplete(true);
+        } else {
+          navigate("/dashboard");
+        }
       } catch (err) {
         toast.error(err.response?.data?.message || "Submit failed");
         submitInFlightRef.current = false;
         setIsSubmitting(false);
       }
     },
-    [answers, examId, navigate, t]
+    [answers, exam, examId, navigate, t]
   );
 
   // ─── Security hook ───────────────────────────────────────────────────────────
@@ -452,24 +462,54 @@ export default function StudentExamSession() {
         <p role="alert" className="text-red-700 dark:text-red-300">
           {sessionError || "The server did not return a valid exam session."}
         </p>
-        <button
-          type="button"
-          onClick={() => {
-            setSessionError("");
-            setSessionLoading(true);
-            setSessionRetry((attempt) => attempt + 1);
-          }}
-          className="rounded-lg bg-[#2C2DE0] px-5 py-3 font-semibold text-white"
-        >
-          Retry session recovery
-        </button>
-        <Link to="/exam-portal" className="ml-3 text-[#2C2DE0] underline">
-          Return to exam portal
-        </Link>
+        {sebLaunchToken ? (
+          <p>
+            Switch to the signed-in UniCORE browser tab and request a fresh SEB launch.
+            If this attempt is already active on another device, contact your exam supervisor.
+          </p>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={() => {
+                setSessionError("");
+                setSessionLoading(true);
+                setSessionRetry((attempt) => attempt + 1);
+              }}
+              className="rounded-lg bg-[#2C2DE0] px-5 py-3 font-semibold text-white"
+            >
+              Retry session recovery
+            </button>
+            <Link to="/exam-portal" className="ml-3 text-[#2C2DE0] underline">
+              Return to exam portal
+            </Link>
+          </>
+        )}
         {sessionError.includes("logged in") && (
           <Link to="/login" className="ml-3 text-[#2C2DE0] underline">
             Sign in
           </Link>
+        )}
+      </main>
+    );
+  }
+
+  if (submissionComplete && exam.security?.sebRequired) {
+    return (
+      <main className="mx-auto flex min-h-screen max-w-2xl flex-col items-center justify-center gap-5 p-8 text-center">
+        <h1 className="text-3xl font-semibold">Exam submitted successfully</h1>
+        <p>Your answers have been saved. Finish this session to close Safe Exam Browser.</p>
+        {examSession.sebQuitUrl ? (
+          <a
+            href={examSession.sebQuitUrl}
+            className="rounded-lg bg-[#2C2DE0] px-6 py-3 font-semibold text-white"
+          >
+            Finish and close Safe Exam Browser
+          </a>
+        ) : (
+          <p role="alert" className="text-amber-800">
+            The secure exit link is unavailable. Please contact your exam supervisor.
+          </p>
         )}
       </main>
     );

@@ -20,20 +20,7 @@ const routeExamRequestThroughFrontend = (config) => {
   return config;
 };
 
-const addSebLaunchHeader = (config) => {
-  routeExamRequestThroughFrontend(config);
-  const examId = String(config.url || "").match(/\/exams\/student\/([a-f\d]{24})\//i)?.[1];
-  if (examId && typeof window !== "undefined") {
-    const launchToken = window.sessionStorage.getItem(`unicores-seb-launch-token:${examId}`);
-    if (launchToken) {
-      config.headers = config.headers || {};
-      config.headers["X-UniCORE-SEB-Launch-Token"] = launchToken;
-    }
-  }
-  return config;
-};
-
-axios.interceptors.request.use(addSebLaunchHeader);
+axios.interceptors.request.use(routeExamRequestThroughFrontend);
 
 const normalizeRequestUrl = (url = "", base = "") => {
   if (!url || /^https?:\/\//i.test(url) || url.startsWith("blob:") || url.startsWith("data:")) {
@@ -91,7 +78,7 @@ api.interceptors.request.use((config) => {
     config.baseURL = "";
   }
 
-  return addSebLaunchHeader(config);
+  return routeExamRequestThroughFrontend(config);
 });
 
 let isRefreshing = false;

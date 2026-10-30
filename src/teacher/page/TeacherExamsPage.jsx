@@ -292,7 +292,7 @@ export default function TeacherExamsPage() {
                   },
                 }))}
               >
-                <option value="normal">Chrome / Normal Browser</option>
+                <option value="normal">Normal Browser</option>
                 <option value="seb">Safe Exam Browser (SEB)</option>
               </select>
             </div>
@@ -436,7 +436,7 @@ export default function TeacherExamsPage() {
               <div className="flex justify-between text-sm">
                 <span className="text-neutral-500">Exam environment</span>
                 <span className="dark:text-neutral-300">
-                  {exam.security?.sebRequired ? "Safe Exam Browser (SEB)" : "Chrome / Normal Browser"}
+                  {exam.security?.sebRequired ? "Safe Exam Browser (SEB)" : "Normal Browser"}
                 </span>
               </div>
               <div className="flex justify-between text-sm">
