@@ -17,11 +17,13 @@ import { toast } from "sonner";
 import { useLanguage } from "@/hooks/useLanguage";
 import { useAuth } from "@/context/AuthContext";
 import { useUniversityVerification } from "@/hooks/useUniversityVerification";
+import { LIBRARIAN_HOME } from "@/admin/routes/adminAccess";
 import UnicoreLogo from "@/FrontDoorSystem/components/Logo";
+import TurnstileCaptcha from "@/components/TurnstileCaptcha";
+import { isLocalTurnstileBypassEnabled } from "@/config/turnstile";
 import api from "@/api/client";
 
 const CHECKING_MS = 2200;
-
 // Where each account type lands once verification finishes
 const dashboardPathFor = (accountType) =>
   accountType === "teacher" ? "/teacher/dashboard" : accountType === "student" ? "/student/dashboard" : "/dashboard";
@@ -29,11 +31,11 @@ const dashboardPathFor = (accountType) =>
 const VerifyUniversityId = () => {
   const { t } = useLanguage();
   const copy = t.universityVerification;
-  const { user, loading, setUser } = useAuth();
+  const { user, loading, setUser, login } = useAuth();
   const { isUniversityVerified } = useUniversityVerification();
   const navigate = useNavigate();
 
-  // Step: "idle" | "checking1" | "step2" | "checking2" | "success"
+  // Step: "idle" | "checking1" | "librarianFound" | "step2" | "checking2" | "success"
   const [step, setStep] = useState("idle");
   const [universityId, setUniversityId] = useState("");
   const [fullName, setFullName] = useState("");
@@ -41,6 +43,9 @@ const VerifyUniversityId = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [loadingPhase, setLoadingPhase] = useState(0);
+  const [captchaToken, setCaptchaToken] = useState(null);
+  const [captchaResetKey, setCaptchaResetKey] = useState(0);
+  const turnstileResponse = isLocalTurnstileBypassEnabled ? "dev-bypass" : captchaToken;
 
   // Which registry role step 1 matched against - "student" | "teacher" | null
   const [accountType, setAccountType] = useState(null);
@@ -54,8 +59,8 @@ const VerifyUniversityId = () => {
   const [animating, setAnimating] = useState(false);
 
   useEffect(() => {
-    if (!loading && !user) {
-      navigate("/login", { replace: true });
+    if (!loading && user?.role === "librarian") {
+      navigate(LIBRARIAN_HOME, { replace: true });
       return;
     }
 
@@ -113,6 +118,7 @@ const VerifyUniversityId = () => {
   const handleStep1 = async (e) => {
     e.preventDefault();
     if (isLockedOut || !universityId.trim()) return;
+    const librarianId = universityId.trim().toUpperCase().replace(/^L\s*(\d+)$/, "L $1");
     setErrorMsg("");
     setStep("checking1");
     setLoadingPhase(0);
@@ -120,14 +126,23 @@ const VerifyUniversityId = () => {
     await new Promise(r => setTimeout(r, CHECKING_MS));
 
     try {
+      const checkEndpoint = !user || user.role === "guest"
+        ? "/auth/university/librarian/check"
+        : "auth/university/check";
       const { data } = await api.post(
-        "auth/university/check",
-        { universityId: universityId.trim().toUpperCase() },
+        checkEndpoint,
+        { universityId: librarianId },
         { withCredentials: true }
       );
 
       const resolvedData = data.data || data;
       setAccountType(resolvedData?.accountType ?? null);
+      if (resolvedData?.accountType === "librarian") {
+        setUniversityId(resolvedData.librarianId || librarianId);
+        setStep("librarianFound");
+        setAttempts(0);
+        return;
+      }
 
       // Animate transition to step 2
       setAnimating(true);
@@ -149,6 +164,44 @@ const VerifyUniversityId = () => {
         );
       }
       setStep("idle");
+    }
+  };
+
+  const handleLibrarianLogin = async (e) => {
+    e.preventDefault();
+    if (!password.trim() || isLockedOut) return;
+    if (!turnstileResponse) {
+      setErrorMsg("Please complete the human verification.");
+      return;
+    }
+
+    setErrorMsg("");
+    setStep("checkingLibrarian");
+    try {
+      const { data } = await api.post(
+        "/auth/login",
+        {
+          email: universityId,
+          librarianId: universityId,
+          password,
+          turnstileToken: turnstileResponse,
+          captchaToken: turnstileResponse,
+        },
+        { withCredentials: true }
+      );
+      const resolvedData = data.data || data;
+      login(resolvedData.user);
+      toast.success(copy.librarianLoginSuccess);
+      navigate(LIBRARIAN_HOME, { replace: true });
+    } catch (err) {
+      setCaptchaToken(null);
+      setCaptchaResetKey((key) => key + 1);
+      const n = bumpAttempts();
+      if (n < 5) {
+        setErrorMsg(err.response?.data?.message || copy.librarianLoginFailed);
+      }
+      setStep("librarianFound");
+      setPassword("");
     }
   };
 
@@ -210,7 +263,7 @@ const VerifyUniversityId = () => {
     : loadingTexts2[loadingPhase];
 
   // ── Guard: spinner while auth loads ──────────────────────────────────────
-  if (loading || !user) {
+  if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white dark:bg-black">
         <Loader2 className="w-8 h-8 animate-spin text-[#2C2DE0] dark:text-[#8E90FF]" />
@@ -218,7 +271,8 @@ const VerifyUniversityId = () => {
     );
   }
 
-  const isChecking = step === "checking1" || step === "checking2";
+  const isChecking =
+    step === "checking1" || step === "checking2" || step === "checkingLibrarian";
   const isTeacherAccount = accountType === "teacher";
 
   return (
@@ -256,6 +310,72 @@ const VerifyUniversityId = () => {
               <div className="mt-8 w-full h-1 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
                 <div className="h-full bg-[#2C2DE0] dark:bg-[#4F51FF] rounded-full anim-progress" />
               </div>
+            </div>
+          )}
+
+          {step === "librarianFound" && (
+            <div className="flex flex-col items-center text-center py-8 anim-fadeup">
+              <div className="w-20 h-20 rounded-2xl bg-[#2C2DE0]/10 dark:bg-[#4F51FF]/20 flex items-center justify-center mb-5">
+                <CheckCircle2 size={40} className="text-[#2C2DE0] dark:text-[#8E90FF]" />
+              </div>
+              <h1 className="text-xl font-black text-gray-900 dark:text-white">
+                {copy.librarianFoundTitle}
+              </h1>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+                {copy.librarianFoundSubtitle}
+              </p>
+              <p className="mt-4 rounded-xl bg-gray-50 px-4 py-2 font-mono font-bold text-gray-800 dark:bg-gray-900 dark:text-white">
+                {universityId}
+              </p>
+              {errorMsg && (
+                <div className="mt-4 w-full">
+                  <ErrorAlert msg={errorMsg} isLockedOut={isLockedOut} countdown={lockoutCountdown} copy={copy} />
+                </div>
+              )}
+              <form onSubmit={handleLibrarianLogin} className="mt-6 w-full flex flex-col gap-4 text-left">
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-[11px] font-bold uppercase tracking-widest text-gray-500 dark:text-gray-400">
+                    {copy.librarianPasswordLabel}
+                  </span>
+                  <div className="relative">
+                    <Lock size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      value={password}
+                      onChange={(e) => { setPassword(e.target.value); setErrorMsg(""); }}
+                      placeholder="••••••••"
+                      autoComplete="current-password"
+                      autoFocus
+                      disabled={isLockedOut}
+                      className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl pl-9 pr-16 py-3 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#2C2DE0]/30 focus:border-[#4F51FF] transition-all disabled:opacity-50"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((visible) => !visible)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-gray-400 hover:text-[#2C2DE0] dark:hover:text-[#8E90FF] transition-colors"
+                    >
+                      {showPassword ? copy.hide : copy.show}
+                    </button>
+                  </div>
+                </label>
+                <TurnstileCaptcha
+                  key={captchaResetKey}
+                  onVerify={setCaptchaToken}
+                  onExpire={() => setCaptchaToken(null)}
+                />
+                <button
+                  type="submit"
+                  disabled={
+                    !password.trim() ||
+                    isLockedOut ||
+                    !turnstileResponse
+                  }
+                  className="w-full flex items-center justify-center gap-2 rounded-full bg-[#2C2DE0] px-6 py-3 text-sm font-bold text-white disabled:opacity-60 disabled:pointer-events-none"
+                >
+                  {copy.librarianSignInButton}
+                  <ArrowRight size={16} />
+                </button>
+              </form>
             </div>
           )}
 

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion as Motion, AnimatePresence } from "framer-motion";
 import {
   QrCode, Scan, CheckCircle2, XCircle, AlertTriangle,
   Clock, User, MapPin, Camera, CameraOff, Hash, RefreshCw,
@@ -13,6 +13,7 @@ import DashboardCard from "@/admin/components/DashboardCard";
 import { useLanguage } from "@/hooks/useLanguage";
 import { fetchQrStats } from "@/api/admin";
 import apiClient from "@/api/client";
+import { verifyLibraryStudentQr } from "@/api/libraryStudentQrApi";
 
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -70,7 +71,7 @@ const ReservationCard = ({ data, onCheckin, onCheckout, onReset, isActing }) => 
                       && !!reservation.checkedInAt;
 
   return (
-    <motion.div
+    <Motion.div
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       className="rounded-2xl border border-gray-200/60 dark:border-white/10 bg-white/70 dark:bg-white/[0.04] backdrop-blur-xl overflow-hidden"
@@ -218,14 +219,12 @@ const ReservationCard = ({ data, onCheckin, onCheckout, onReset, isActing }) => 
           )}
         </div>
       </div>
-    </motion.div>
+    </Motion.div>
   );
 };
 
 // ─── Camera QR Scanner ────────────────────────────────────────────────────────
-const CameraScanner = ({ onDetect, onClose }) => {
-  const videoRef = useRef(null);
-  const streamRef = useRef(null);
+const CameraScanner = ({ onDetect, onClose, purpose, copy }) => {
   const scannerRef = useRef(null);
   const [error, setError] = useState(null);
   const [scanning, setScanning] = useState(true);
@@ -233,25 +232,9 @@ const CameraScanner = ({ onDetect, onClose }) => {
   useEffect(() => {
     let active = true;
 
-    const startCamera = async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
-        });
-        streamRef.current = stream;
-        if (videoRef.current && active) {
-          videoRef.current.srcObject = stream;
-        }
-      } catch {
-        setError("Camera access denied or unavailable.");
-      }
-    };
-
-    startCamera();
-
-    // Dynamically load html5-qrcode
     const script = document.createElement("script");
     script.src = "https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js";
+    script.onerror = () => setError("QR scanner could not be loaded.");
     script.onload = () => {
       if (!active) return;
       try {
@@ -263,11 +246,16 @@ const CameraScanner = ({ onDetect, onClose }) => {
           (decodedText) => {
             if (!active) return;
             setScanning(false);
-            try { scanner.stop().catch(() => {}); } catch(e) {}
+            void scanner.stop().catch((stopError) => {
+              console.warn("QR scanner failed to stop after decoding.", stopError);
+            });
             onDetect(decodedText);
           },
           () => {}
-        ).catch(() => setError("Could not start QR scanner."));
+        ).catch((startError) => {
+          console.error("QR scanner failed to start.", startError);
+          setError("Could not start QR scanner.");
+        });
       } catch {
         setError("QR scanner failed to initialize.");
       }
@@ -276,14 +264,17 @@ const CameraScanner = ({ onDetect, onClose }) => {
 
     return () => {
       active = false;
-      if (streamRef.current) streamRef.current.getTracks().forEach((t) => t.stop());
-      try { if (scannerRef.current) scannerRef.current.stop().catch(() => {}); } catch(e) {}
+      if (scannerRef.current) {
+        void scannerRef.current.stop().catch((stopError) => {
+          console.warn("QR scanner failed to stop during cleanup.", stopError);
+        });
+      }
       document.body.removeChild(script);
     };
   }, [onDetect]);
 
   return (
-    <motion.div
+    <Motion.div
       initial={{ opacity: 0, scale: 0.97 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.97 }}
@@ -292,7 +283,9 @@ const CameraScanner = ({ onDetect, onClose }) => {
       <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-white/10">
         <div className="flex items-center gap-2">
           <Camera size={16} className="text-[#2C2DE0]" />
-          <span className="font-bold text-sm text-gray-900 dark:text-white">Camera Scanner</span>
+          <span className="font-bold text-sm text-gray-900 dark:text-white">
+            {purpose === "student" ? copy.studentIdentityMode : copy.seatReservationMode}
+          </span>
         </div>
         <button
           onClick={onClose}
@@ -328,10 +321,61 @@ const CameraScanner = ({ onDetect, onClose }) => {
           </div>
         )}
         <p className="text-center text-xs text-gray-400 mt-3">
-          Point camera at student's QR code
+          {purpose === "student"
+            ? copy.identityCameraHint
+            : copy.reservationCameraHint}
         </p>
       </div>
-    </motion.div>
+    </Motion.div>
+  );
+};
+
+const VerifiedStudentCard = ({ student, onReset, copy }) => {
+  const department = typeof student.department === "string"
+    ? student.department
+    : student.department?.name || student.department?.departmentName || "—";
+  const details = [
+    [copy.identityStudentId, student.universityId],
+    [copy.identityDepartment, department],
+    [copy.identityRole, student.role],
+    [copy.identitySemester, student.semester],
+    [copy.identityRegistrationStatus, student.registrationStatus],
+  ].filter(([, value]) => value !== undefined && value !== null && value !== "");
+
+  return (
+    <Motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="rounded-2xl border border-emerald-200 dark:border-emerald-500/30 bg-white/80 dark:bg-white/[0.04] overflow-hidden"
+    >
+      <div className="flex items-center gap-2 px-5 py-4 border-b border-emerald-100 dark:border-emerald-500/20 bg-emerald-50 dark:bg-emerald-500/10">
+        <CheckCircle2 size={18} className="text-emerald-600 dark:text-emerald-400" />
+        <p className="font-bold text-sm text-emerald-800 dark:text-emerald-300">{copy.identityVerified}</p>
+      </div>
+      <div className="p-5 space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="h-12 w-12 rounded-xl bg-[#2C2DE0]/10 flex items-center justify-center">
+            <User size={22} className="text-[#2C2DE0]" />
+          </div>
+          <div className="min-w-0">
+            <p className="font-bold text-gray-900 dark:text-white">{student.fullName}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">{student.universityId}</p>
+          </div>
+        </div>
+        <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {details.map(([label, value]) => (
+            <div key={label} className="rounded-xl bg-gray-50 dark:bg-white/5 px-3 py-2">
+              <dt className="text-[10px] uppercase tracking-wide text-gray-400">{label}</dt>
+              <dd className="text-sm font-medium text-gray-800 dark:text-gray-200 break-words">{value}</dd>
+            </div>
+          ))}
+        </dl>
+        <p className="text-xs text-gray-500 dark:text-gray-400">{copy.identityVerifiedHint}</p>
+        <button type="button" onClick={onReset} className="w-full rounded-xl border border-gray-200 dark:border-white/10 py-2.5 text-sm font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5">
+          {copy.scanAnotherStudent}
+        </button>
+      </div>
+    </Motion.div>
   );
 };
 
@@ -344,8 +388,11 @@ const QrCheckinPage = () => {
   const [mode, setMode] = useState("manual"); // "manual" | "camera"
   const [inputValue, setInputValue] = useState("");
   const [inputType, setInputType] = useState("qr"); // "qr" | "id"
+  const [scanTarget, setScanTarget] = useState("reservation");
   const [result, setResult] = useState(null); // { reservation, warnings }
   const [actionResult, setActionResult] = useState(null); // { type, message }
+  const [verifiedStudent, setVerifiedStudent] = useState(null);
+  const [identityError, setIdentityError] = useState(null);
 
  
 const { data: statsRes, refetch: refetchStats } = useQuery({
@@ -360,6 +407,7 @@ const { data: statsRes, refetch: refetchStats } = useQuery({
 });
 
 const stats = statsRes ?? { checkInsToday: 0, lastScan: null, recentScans: [] };
+const copy = p;
 
   // ── LOOKUP ──
   const lookupMutation = useMutation({
@@ -377,6 +425,35 @@ const stats = statsRes ?? { checkInsToday: 0, lastScan: null, recentScans: [] };
     onError: (err) => {
       toast.error(err.response?.data?.message || "Reservation not found");
       setResult(null);
+    },
+  });
+
+  const identityMutation = useMutation({
+    onMutate: () => {
+      setIdentityError(null);
+      setVerifiedStudent(null);
+    },
+    mutationFn: async (value) => {
+      const token = value.trim();
+      if (!token) throw new Error("Enter or scan a student identity QR token.");
+      const response = await verifyLibraryStudentQr(token);
+      const body = response?.data?.data ?? response?.data;
+      if (response?.data?.success === false || !body?.student) {
+        throw new Error(body?.message || "Student QR could not be verified.");
+      }
+      return body.student;
+    },
+    onSuccess: (student) => {
+      setVerifiedStudent(student);
+      setIdentityError(null);
+      setResult(null);
+      toast.success(p.identityVerified);
+    },
+    onError: (err) => {
+      const message = err.response?.data?.message || err.message || p.identityRejected;
+      setVerifiedStudent(null);
+      setIdentityError(message);
+      toast.error(message);
     },
   });
 
@@ -435,64 +512,99 @@ const stats = statsRes ?? { checkInsToday: 0, lastScan: null, recentScans: [] };
 
   const isActing = checkinMutation.isPending || checkoutMutation.isPending;
 
+  const identityMutate = identityMutation.mutate;
+  const lookupMutate = lookupMutation.mutate;
   const handleScan = useCallback((value) => {
     setInputValue(value);
     setMode("manual");
-    // auto-lookup when camera detects
-    lookupMutation.mutate(value);
-  }, [inputType]);
+    if (scanTarget === "student") identityMutate(value);
+    else lookupMutate(value);
+  }, [identityMutate, lookupMutate, scanTarget]);
 
   const handleReset = () => {
     setResult(null);
     setActionResult(null);
+    setVerifiedStudent(null);
+    setIdentityError(null);
     setInputValue("");
     lookupMutation.reset();
+    identityMutation.reset();
   };
 
   return (
     <PageTransition>
-      <PageHeader title={p.title} subtitle={p.subtitle} />
+      <PageHeader
+        title={p.title}
+        subtitle={scanTarget === "student" ? p.identitySubtitle : p.seatReservationSubtitle}
+      />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
 
         {/* ── LEFT PANEL ─────────────────────────────────────────── */}
         <div className="lg:col-span-2 space-y-4">
 
-          {/* mode toggle */}
-          <div className="flex gap-2 p-1 rounded-xl bg-gray-100/70 dark:bg-white/5 border border-gray-200/60 dark:border-white/10 w-fit">
+          <div className="flex flex-wrap gap-2" role="group" aria-label={p.scanPurpose}>
             {[
-              { key: "manual", label: "Manual Entry", icon: Hash },
-              { key: "camera", label: "Camera Scan",  icon: Camera },
-            ].map(({ key, label, icon: Icon }) => (
+              { key: "reservation", label: p.seatReservationMode },
+              { key: "student", label: p.studentIdentityMode },
+            ].map(({ key, label }) => (
               <button
                 key={key}
-                onClick={() => { setMode(key); handleReset(); }}
-                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-                  mode === key
-                    ? "bg-white dark:bg-white/10 text-gray-900 dark:text-white shadow-sm"
-                    : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                type="button"
+                onClick={() => {
+                  handleReset();
+                  setScanTarget(key);
+                }}
+                aria-pressed={scanTarget === key}
+                className={`rounded-xl px-4 py-2.5 text-xs font-bold border transition-colors ${
+                  scanTarget === key
+                    ? "bg-[#2C2DE0] border-[#2C2DE0] text-white"
+                    : "border-gray-200 dark:border-white/10 text-gray-500 hover:bg-gray-50 dark:hover:bg-white/5"
                 }`}
               >
-                <Icon size={13} />
                 {label}
               </button>
             ))}
           </div>
 
+          {/* mode toggle */}
+          <div className="flex gap-2 p-1 rounded-xl bg-gray-100/70 dark:bg-white/5 border border-gray-200/60 dark:border-white/10 w-fit">
+            {[
+              { key: "manual", label: p.manualEntry, icon: Hash },
+              { key: "camera", label: p.cameraScan, icon: Camera },
+            ].map((item) => {
+              const ModeIcon = item.icon;
+              return <button
+                key={item.key}
+                onClick={() => { setMode(item.key); handleReset(); }}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                  mode === item.key
+                    ? "bg-white dark:bg-white/10 text-gray-900 dark:text-white shadow-sm"
+                    : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                }`}
+              >
+                <ModeIcon size={13} />
+                {item.label}
+              </button>;
+            })}
+          </div>
+
           <AnimatePresence mode="wait">
 
             {/* CAMERA MODE */}
-            {mode === "camera" && !result && (
+            {mode === "camera" && !result && !verifiedStudent && (
               <CameraScanner
                 key="camera"
                 onDetect={handleScan}
+                purpose={scanTarget}
+                copy={p}
                 onClose={() => setMode("manual")}
               />
             )}
 
             {/* MANUAL MODE */}
-            {mode === "manual" && !result && (
-              <motion.div
+            {mode === "manual" && !result && !verifiedStudent && (
+              <Motion.div
                 key="manual"
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -501,27 +613,29 @@ const stats = statsRes ?? { checkInsToday: 0, lastScan: null, recentScans: [] };
               >
                 {/* pulse icon */}
                 <div className="flex flex-col items-center py-4">
-                  <motion.div
+                  <Motion.div
                     animate={{ scale: [1, 1.06, 1] }}
                     transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
                     className="h-28 w-28 rounded-3xl border-2 border-dashed border-[#2C2DE0]/40 flex items-center justify-center bg-[#2C2DE0]/5"
                   >
                     <QrCode size={52} className="text-[#2C2DE0]" strokeWidth={1.25} />
-                  </motion.div>
+                  </Motion.div>
                   <p className="mt-4 text-sm text-gray-500 dark:text-gray-400 text-center max-w-xs">
-                    Enter the student's QR code or Reservation ID to look up and confirm their booking
+                    {scanTarget === "student"
+                      ? p.identityManualHint
+                      : p.reservationManualHint}
                   </p>
                 </div>
 
                 {/* input type toggle */}
-                <div>
+                {scanTarget === "reservation" && <div>
                   <label className="block text-xs font-bold uppercase tracking-widest text-gray-400 mb-2">
-                    Lookup By
+                    {p.lookupBy}
                   </label>
                   <div className="flex gap-2">
                     {[
-                      { key: "qr", label: "QR Code" },
-                      { key: "id", label: "Reservation ID" },
+                      { key: "qr", label: p.reservationQrLabel },
+                      { key: "id", label: p.reservationIdLabel },
                     ].map(({ key, label }) => (
                       <button
                         key={key}
@@ -536,19 +650,27 @@ const stats = statsRes ?? { checkInsToday: 0, lastScan: null, recentScans: [] };
                       </button>
                     ))}
                   </div>
-                </div>
+                </div>}
 
                 {/* input */}
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-widest text-gray-400 mb-2">
-                    {inputType === "qr" ? "QR Code Value" : "Reservation ID (last 8 chars)"}
+                    {scanTarget === "student"
+                      ? p.identityTokenLabel
+                      : inputType === "qr" ? p.reservationQrLabel : p.reservationIdLabel}
                   </label>
                   <input
                     type="text"
                     value={inputValue}
                     onChange={(e) => setInputValue(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && inputValue.trim() && lookupMutation.mutate(inputValue)}
-                    placeholder={inputType === "qr" ? "e.g. a83f9c12d91ab77e..." : "e.g. A1B2C3D4 or full ID..."}
+                    onKeyDown={(e) => {
+                      if (e.key !== "Enter" || !inputValue.trim()) return;
+                      if (scanTarget === "student") identityMutation.mutate(inputValue);
+                      else lookupMutation.mutate(inputValue);
+                    }}
+                    placeholder={scanTarget === "student"
+                      ? p.identityTokenPlaceholder
+                      : inputType === "qr" ? p.reservationQrPlaceholder : p.reservationIdPlaceholder}
                     className="w-full rounded-xl border border-gray-200/80 dark:border-white/10 bg-white/80 dark:bg-white/5 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#2C2DE0]/30 font-mono"
                     autoFocus
                   />
@@ -556,23 +678,38 @@ const stats = statsRes ?? { checkInsToday: 0, lastScan: null, recentScans: [] };
 
                 <button
                   type="button"
-                  disabled={!inputValue.trim() || lookupMutation.isPending}
-                  onClick={() => lookupMutation.mutate(inputValue)}
+                  disabled={!inputValue.trim() || lookupMutation.isPending || identityMutation.isPending}
+                  onClick={() => scanTarget === "student"
+                    ? identityMutation.mutate(inputValue)
+                    : lookupMutation.mutate(inputValue)}
                   className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-[#2C2DE0] hover:bg-[#2C2DE0] disabled:opacity-50 py-3 text-sm font-bold text-white transition-colors"
                 >
-                  {lookupMutation.isPending
-                    ? <><Loader2 size={16} className="animate-spin" /> Looking up...</>
-                    : <><Scan size={16} /> Look Up Reservation</>
+                  {lookupMutation.isPending || identityMutation.isPending
+                    ? <><Loader2 size={16} className="animate-spin" /> {p.lookupLoading}</>
+                    : <><Scan size={16} /> {scanTarget === "student" ? p.verifyStudentQr : p.lookupReservation}</>
                   }
                 </button>
-              </motion.div>
+                {identityError && scanTarget === "student" && (
+                  <div role="alert" className="rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-4 py-3 text-sm text-red-700 dark:text-red-300">
+                    {identityError}
+                  </div>
+                )}
+              </Motion.div>
             )}
 
+            {verifiedStudent && scanTarget === "student" && (
+              <VerifiedStudentCard
+                key="verified-student"
+                student={verifiedStudent}
+                onReset={handleReset}
+                copy={copy}
+              />
+            )}
             {/* RESULT */}
             {result && (
               <div key="result" className="space-y-3">
                 {actionResult && (
-                  <motion.div
+                  <Motion.div
                     initial={{ opacity: 0, y: -6 }}
                     animate={{ opacity: 1, y: 0 }}
                     className={`flex items-center gap-2 px-4 py-3 rounded-xl border text-sm font-medium ${
@@ -586,7 +723,7 @@ const stats = statsRes ?? { checkInsToday: 0, lastScan: null, recentScans: [] };
                       : <XCircle size={16} />
                     }
                     {actionResult.message}
-                  </motion.div>
+                  </Motion.div>
                 )}
 
                 <ReservationCard

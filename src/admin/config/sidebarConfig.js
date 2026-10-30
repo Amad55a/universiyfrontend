@@ -12,8 +12,9 @@ import {
   BookCheck,
   ShieldCheck,
   UsersRound,
+  MessageSquareText,
+  UserRoundSearch,
 } from "lucide-react";
-import { FcBarChart, FcDocument } from "react-icons/fc";
 
 /**
  * Sidebar structure — labels resolved via t.adminPanel.sidebar[labelKey]
@@ -29,7 +30,14 @@ export const SIDEBAR_SECTIONS = [
         labelKey: "dashboard",
         icon: LayoutDashboard,
         path: "/admin/dashboard",
-        roles: ["admin", "librarian"],
+        roles: ["admin"],
+      },
+      {
+        id: "library-overview",
+        labelKey: "libraryOverview",
+        icon: LayoutDashboard,
+        path: "/admin/library",
+        roles: ["librarian"],
       },
     ],
   },
@@ -60,7 +68,7 @@ export const SIDEBAR_SECTIONS = [
       },
       {
         id: "seats",
-        labelKey: "seats",
+        labelKey: "seatManagement",
         icon: GraduationCap,
         path: "/admin/seats",
         roles: ["admin", "librarian"],
@@ -90,23 +98,51 @@ export const SIDEBAR_SECTIONS = [
         labelKey: "books",
         icon: BookOpen,
         path: "/admin/books",
-        roles: ["admin", "librarian"],
+        roles: ["admin"],
         children: [
           {
             id: "books",
             labelKey: "books",
             icon: Library,
             path: "/admin/books",
-            roles: ["admin", "librarian"],
+            roles: ["admin"],
           },
           {
             id: "books-borrowing",
             labelKey: "booksBorrowing",
             icon: BookCheck,
             path: "/admin/books/borrowing",
-            roles: ["admin", "librarian"],
+            roles: ["admin"],
           },
         ],
+      },
+      {
+        id: "librarian-book-search",
+        labelKey: "books",
+        icon: BookOpen,
+        path: "/admin/books",
+        roles: ["librarian"],
+      },
+      {
+        id: "librarian-borrowing",
+        labelKey: "borrowing",
+        icon: BookCheck,
+        path: "/admin/books/borrowing",
+        roles: ["librarian"],
+      },
+      {
+        id: "librarian-returns",
+        labelKey: "returns",
+        icon: BookCheck,
+        path: "/admin/books/returns",
+        roles: ["librarian"],
+      },
+      {
+        id: "librarian-student-search",
+        labelKey: "studentSearch",
+        icon: UserRoundSearch,
+        path: "/admin/library/students",
+        roles: ["librarian"],
       },
     ],
   },
@@ -123,25 +159,24 @@ export const SIDEBAR_SECTIONS = [
       },
       {
         id: "analytics",
-        labelKey: "analytics",
+        labelKey: "reportsCenter",
         icon: BarChart3,
-        path: "/admin/analytics",
-        roles: ["admin", "librarian"],
+        path: "/admin/reports",
+        roles: ["admin"],
       },
     ],
   },
   {
-    id: "reports",
-    sectionKey: "sections.reports",
+    id: "community",
+    sectionKey: "sections.community",
     items: [
       {
-        id: "reports",
-        labelKey: "Reports",
-        icon: FcDocument,
-        path: "/admin/reports",
-        roles: ["admin", "librarian"],
+        id: "librarian-community",
+        labelKey: "community",
+        icon: MessageSquareText,
+        path: "/community",
+        roles: ["librarian"],
       },
-      
     ],
   },
   {
@@ -155,14 +190,21 @@ export const SIDEBAR_SECTIONS = [
         path: "/admin/settings",
         roles: ["admin"],
       },
+      {
+        id: "profile",
+        labelKey: "profile",
+        icon: Users,
+        path: "/admin/profile",
+        roles: ["librarian"],
+      },
 
-  {id: "user-authority",
-  labelKey: "userAuthority",        
-  icon: ShieldCheck,
-  path: "/admin/user-authority",
-  roles: ["admin"],
-
-  }
+      {
+        id: "user-authority",
+        labelKey: "userAuthority",
+        icon: ShieldCheck,
+        path: "/admin/user-authority",
+        roles: ["admin"],
+      },
     ],
   },
 ];

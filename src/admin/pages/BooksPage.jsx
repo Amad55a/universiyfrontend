@@ -11,12 +11,13 @@
  * "view" for a PDF happens through the protected /api/books/:id/read stream.
  */
 
-import { useState, useRef, useCallback, useMemo, useEffect } from "react";
+import { createElement, useState, useRef, useCallback, useMemo } from "react";
 import { useLanguage } from "@/hooks/useLanguage";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion as Motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import apiClient from "@/api/client";
 import { toast } from "sonner";
+import { useAuth } from "@/context/AuthContext";
 import {
   BookOpen, BookMarked, FileText, Search, Filter,
   Plus, Eye, Pencil, Trash2, Upload, X, Check,
@@ -30,6 +31,7 @@ import {
 const api = {
   list: (p) => apiClient.get("/admin/books", { params: p }),
   get: (id) => apiClient.get(`/admin/books/${id}`),
+  history: (id) => apiClient.get(`/admin/books/${id}/borrowing-history`),
   create: (fd) => apiClient.post("/admin/books", fd),
   update: (id, fd) => apiClient.put(`/admin/books/${id}`, fd),
   remove: (id) => apiClient.delete(`/admin/books/${id}`),
@@ -48,7 +50,8 @@ const getStatusOpts = (T) => [
 ];
 
 const EMPTY_FORM = {
-  title: "", author: "", isbn: "", category: "", description: "",
+  title: "", author: "", isbn: "", bookIdentifier: "", publisher: "",
+  publicationYear: "", category: "", description: "",
   format: "physical", shelfLocation: "", totalCopies: 1,
   availableCopies: 1, status: "active",
 };
@@ -79,7 +82,7 @@ const StatusDot = ({ status, T }) => {
 };
 
 // ─── File drop zone ────────────────────────────────────────────────────────────
-const DropZone = ({ accept, label, hint, icon: Icon, preview, onFile, onClear, T }) => {
+const DropZone = ({ accept, label, hint, icon: IconComponent, preview, onFile, onClear, T }) => {
   const inputRef = useRef();
   const [drag, setDrag] = useState(false);
 
@@ -119,7 +122,7 @@ const DropZone = ({ accept, label, hint, icon: Icon, preview, onFile, onClear, T
       ) : (
         <div className="flex flex-col items-center gap-2 text-center">
           <div className={`size-10 rounded-xl flex items-center justify-center ${drag ? "bg-[#2C2DE0] dark:bg-[#2C2DE0]/20" : "bg-gray-100 dark:bg-white/5"}`}>
-            <Icon size={18} className={drag ? "text-[#2C2DE0]" : "text-gray-400"} />
+            {createElement(IconComponent, { size: 18, className: drag ? "text-[#2C2DE0]" : "text-gray-400" })}
           </div>
           <div>
             <p className="text-xs font-bold text-gray-700 dark:text-gray-200">{label}</p>
@@ -192,12 +195,12 @@ const ModalShell = ({ open, onClose, title, subtitle, size = "md", children, foo
   return (
     <AnimatePresence>
       {open && (
-        <motion.div
+        <Motion.div
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
           className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-6 bg-black/50 backdrop-blur-sm"
           onClick={onClose}
         >
-          <motion.div
+          <Motion.div
             initial={{ opacity: 0, y: 40, scale: 0.97 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 40, scale: 0.97 }}
@@ -224,8 +227,8 @@ const ModalShell = ({ open, onClose, title, subtitle, size = "md", children, foo
                 {footer}
               </div>
             )}
-          </motion.div>
-        </motion.div>
+          </Motion.div>
+        </Motion.div>
       )}
     </AnimatePresence>
   );
@@ -235,7 +238,7 @@ const ModalShell = ({ open, onClose, title, subtitle, size = "md", children, foo
 const StatCard = ({ label, value, icon: Icon, accent, sub }) => (
   <div className="flex items-center gap-3.5 rounded-2xl border border-gray-200/70 dark:border-white/10 bg-white/70 dark:bg-white/[0.04] backdrop-blur-sm p-4">
     <div className={`size-11 rounded-xl flex items-center justify-center flex-shrink-0 ${accent}`}>
-      <Icon size={20} className="text-white" />
+      {createElement(Icon, { size: 20, className: "text-white" })}
     </div>
     <div>
       <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 dark:text-gray-400">{label}</p>
@@ -246,23 +249,16 @@ const StatCard = ({ label, value, icon: Icon, accent, sub }) => (
 );
 
 // ─── Book form (Add / Edit) ────────────────────────────────────────────────────
-const BookForm = ({ initial, onSubmit, isSaving, T }) => {
+const BookForm = ({ initial, onSubmit, isLibrarian, T }) => {
   const [form, setForm] = useState(initial || EMPTY_FORM);
   const [coverFile, setCoverFile] = useState(null);
   const [coverPreview, setCoverPreview] = useState(coverUrl(initial) || null);
   const [pdfFile, setPdfFile] = useState(null);
   const [pdfName, setPdfName] = useState(hasEbook(initial) ? "existing.pdf" : null);
 
-  // Re-initialise the form whenever the book being edited changes
-  useEffect(() => {
-    setForm(initial || EMPTY_FORM);
-    setCoverFile(null);
-    setCoverPreview(coverUrl(initial) || null);
-    setPdfFile(null);
-    setPdfName(hasEbook(initial) ? "existing.pdf" : null);
-  }, [initial]);
-
-  const FORMAT_OPTS = getFormatOpts(T);
+  const FORMAT_OPTS = getFormatOpts(T).filter((option) =>
+    !isLibrarian || ["physical", "both"].includes(option.value)
+  );
   const STATUS_OPTS = getStatusOpts(T);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -290,7 +286,7 @@ const BookForm = ({ initial, onSubmit, isSaving, T }) => {
     onSubmit(fd);
   };
 
-  const needsPdf = ["ebook", "both"].includes(form.format);
+  const needsPdf = !isLibrarian && ["ebook", "both"].includes(form.format);
   const needsShelf = ["physical", "both"].includes(form.format);
   const needsCopies = ["physical", "both"].includes(form.format);
 
@@ -322,8 +318,17 @@ const BookForm = ({ initial, onSubmit, isSaving, T }) => {
       </div>
 
       <div className="grid grid-cols-2 gap-3">
+        <Field label="Book identifier">
+          <Input value={form.bookIdentifier || ""} onChange={(e) => set("bookIdentifier", e.target.value)} placeholder="Library identifier" />
+        </Field>
         <Field label={T.fieldISBN}>
           <Input value={form.isbn} onChange={(e) => set("isbn", e.target.value)} placeholder={T.phISBN} />
+        </Field>
+        <Field label="Publisher">
+          <Input value={form.publisher || ""} onChange={(e) => set("publisher", e.target.value)} placeholder="Publisher" />
+        </Field>
+        <Field label="Publication year">
+          <Input type="number" min={0} value={form.publicationYear || ""} onChange={(e) => set("publicationYear", e.target.value)} placeholder="Year" />
         </Field>
         <Field label={T.fieldCategory}>
           <Input value={form.category} onChange={(e) => set("category", e.target.value)} placeholder={T.phCategory} />
@@ -413,10 +418,8 @@ const BookForm = ({ initial, onSubmit, isSaving, T }) => {
 };
 
 // ─── View modal ────────────────────────────────────────────────────────────────
-const ViewModal = ({ book, open, onClose, onEdit, T }) => {
+const ViewModal = ({ book, open, onClose, onEdit, canManage, history = [], historyLoading, historyError, T }) => {
   if (!book) return null;
-  const fmt = fmtInfo(book.format, T);
-
   return (
     <ModalShell
       open={open}
@@ -428,12 +431,14 @@ const ViewModal = ({ book, open, onClose, onEdit, T }) => {
           <button onClick={onClose} className="px-4 py-2 rounded-xl text-xs font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
             {T.close}
           </button>
-          <button
-            onClick={() => { onClose(); onEdit(book); }}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold bg-[#2C2DE0] hover:bg-[#2C2DE0] text-white transition-colors shadow-sm"
-          >
-            <Pencil size={13} /> {T.actionEdit}
-          </button>
+          {canManage && (
+            <button
+              onClick={() => { onClose(); onEdit(book); }}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold bg-[#2C2DE0] hover:bg-[#2C2DE0] text-white transition-colors shadow-sm"
+            >
+              <Pencil size={13} /> {T.actionEdit}
+            </button>
+          )}
         </>
       }
     >
@@ -502,6 +507,37 @@ const ViewModal = ({ book, open, onClose, onEdit, T }) => {
             <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed">{book.description}</p>
           </div>
         )}
+        {canManage && (
+          <section aria-label="Borrowing history" className="space-y-2 border-t border-gray-100 pt-4 dark:border-white/10">
+            <h3 className="text-sm font-bold text-gray-900 dark:text-white">Borrowing history</h3>
+            {historyLoading ? (
+              <p className="text-xs text-gray-500">Loading borrowing history…</p>
+            ) : historyError ? (
+              <p role="alert" className="text-xs text-red-600">Could not load borrowing history.</p>
+            ) : history.length === 0 ? (
+              <p className="text-xs text-gray-500">No borrowing history recorded.</p>
+            ) : (
+              <div className="max-h-48 space-y-2 overflow-y-auto">
+                {history.map((loan) => (
+                  <div key={loan._id} className="flex flex-wrap justify-between gap-2 rounded-xl bg-gray-50 px-3 py-2 text-xs dark:bg-white/[0.03]">
+                    <div>
+                      <p className="font-semibold text-gray-800 dark:text-gray-200">
+                        {loan.borrower?.fullName || loan.borrower?.name || "Student"}
+                        {loan.borrower?.universityId ? ` · ${loan.borrower.universityId}` : ""}
+                      </p>
+                      <p className="text-gray-500">
+                        Issued {loan.borrowedAt ? new Date(loan.borrowedAt).toLocaleDateString() : "—"}
+                        {" · "}Due {loan.dueDate ? new Date(loan.dueDate).toLocaleDateString() : "—"}
+                        {loan.returnedAt ? ` · Returned ${new Date(loan.returnedAt).toLocaleDateString()}` : ""}
+                      </p>
+                    </div>
+                    <span className="font-semibold capitalize">{loan.status}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
       </div>
     </ModalShell>
   );
@@ -544,7 +580,7 @@ const DeleteModal = ({ book, open, onClose, onConfirm, isDeleting, T }) => (
 );
 
 // ─── Filter pill ───────────────────────────────────────────────────────────────
-const FilterPill = ({ label, value, options, onChange }) => (
+const FilterPill = ({ value, options, onChange }) => (
   <div className="relative">
     <select
       value={value}
@@ -560,6 +596,9 @@ const FilterPill = ({ label, value, options, onChange }) => (
 // ─── Main page ─────────────────────────────────────────────────────────────────
 const BooksPage = () => {
   const { t } = useLanguage();
+  const { user } = useAuth();
+  const isLibrarian = user?.role === "librarian";
+  const canManageBooks = user?.role === "admin" || isLibrarian;
   const T = t.adminBooks;
   const queryClient = useQueryClient();
 
@@ -584,6 +623,18 @@ const BooksPage = () => {
     queryFn: async () => (await api.list(params)).data,
     keepPreviousData: true,
   });
+
+  const viewedBookId = viewing?._id || viewing?.id;
+  const {
+    data: borrowingHistoryResponse,
+    isLoading: historyLoading,
+    isError: historyError,
+  } = useQuery({
+    queryKey: ["admin-book-borrowing-history", viewedBookId],
+    queryFn: async () => (await api.history(viewedBookId)).data,
+    enabled: Boolean(viewedBookId),
+  });
+  const borrowingHistory = borrowingHistoryResponse?.history || [];
 
   const books = data?.books ?? data?.data ?? [];
   const pagination = data?.pagination ?? { page: 1, totalPages: 1, total: books.length };
@@ -614,7 +665,7 @@ const BooksPage = () => {
 
   const deleteMut = useMutation({
     mutationFn: (id) => api.remove(id),
-    onSuccess: () => { toast.success(T.toastDeleted); setDeleting(null); invalidate(); },
+    onSuccess: (response) => { toast.success(response?.data?.message || T.toastDeleted); setDeleting(null); invalidate(); },
     onError: (e) => toast.error(errMsg(e)),
   });
 
@@ -706,13 +757,15 @@ const BooksPage = () => {
             <p className="text-xs text-gray-400 mt-0.5">{T.pageSubtitle}</p>
           </div>
         </div>
-        <button
-          onClick={() => setEditing({})}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#2C2DE0] hover:bg-[#2C2DE0] text-white text-sm font-bold transition-all shadow-sm shadow-[#2C2DE0]/20"
-        >
-          <Plus size={16} />
-          {T.actionAdd}
-        </button>
+        {canManageBooks && (
+          <button
+            onClick={() => setEditing({})}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#2C2DE0] hover:bg-[#2C2DE0] text-white text-sm font-bold transition-all shadow-sm shadow-[#2C2DE0]/20"
+          >
+            <Plus size={16} />
+            {T.actionAdd}
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -735,17 +788,19 @@ const BooksPage = () => {
           />
         </div>
 
-        <FilterPill
-          label={T.filterFormat}
-          value={fmtFlt}
-          onChange={(v) => { setFmtFlt(v); setPage(1); }}
-          options={[
-            { value: "all", label: `${T.filterFormat}: ${T.filterAll}` },
-            { value: "physical", label: T.formatPhysical },
-            { value: "ebook", label: T.formatEbook },
-            { value: "both", label: T.formatBoth },
-          ]}
-        />
+        {!isLibrarian && (
+          <FilterPill
+            label={T.filterFormat}
+            value={fmtFlt}
+            onChange={(v) => { setFmtFlt(v); setPage(1); }}
+            options={[
+              { value: "all", label: `${T.filterFormat}: ${T.filterAll}` },
+              { value: "physical", label: T.formatPhysical },
+              { value: "ebook", label: T.formatEbook },
+              { value: "both", label: T.formatBoth },
+            ]}
+          />
+        )}
         <FilterPill
           label={T.filterStatus}
           value={stsFlt}
@@ -757,15 +812,17 @@ const BooksPage = () => {
           ]}
         />
 
-        <button
-          onClick={exportBooksCsv}
-          disabled={books.length === 0}
-          title={T.actionExport}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-300 hover:border-[#2C2DE0] hover:text-[#2C2DE0] dark:hover:text-[#2C2DE0] disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-        >
-          <Download size={14} />
-          <span className="text-xs font-semibold hidden sm:inline">{T.actionExport}</span>
-        </button>
+        {canManageBooks && (
+          <button
+            onClick={exportBooksCsv}
+            disabled={books.length === 0}
+            title={T.actionExport}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-300 hover:border-[#2C2DE0] hover:text-[#2C2DE0] dark:hover:text-[#2C2DE0] disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+          >
+            <Download size={14} />
+            <span className="text-xs font-semibold hidden sm:inline">{T.actionExport}</span>
+          </button>
+        )}
       </div>
 
       <div className="rounded-2xl border border-gray-200/70 dark:border-white/10 bg-white dark:bg-white/[0.03] overflow-hidden">
@@ -803,7 +860,7 @@ const BooksPage = () => {
               <tbody>
                 <AnimatePresence mode="popLayout">
                   {books.map((book, i) => (
-                    <motion.tr
+                    <Motion.tr
                       key={book._id}
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
@@ -852,19 +909,23 @@ const BooksPage = () => {
                             title={T.actionView}>
                             <Eye size={13} />
                           </button>
-                          <button onClick={() => setEditing(book)}
-                            className="size-7 rounded-lg flex items-center justify-center text-gray-400 hover:bg-[#2C2DE0] dark:hover:bg-[#2C2DE0]/10 hover:text-[#2C2DE0] dark:hover:text-[#2C2DE0] transition-colors"
-                            title={T.actionEdit}>
-                            <Pencil size={13} />
-                          </button>
-                          <button onClick={() => setDeleting(book)}
-                            className="size-7 rounded-lg flex items-center justify-center text-gray-400 hover:bg-red-50 dark:hover:bg-red-500/10 hover:text-red-500 transition-colors"
-                            title={T.actionDelete}>
-                            <Trash2 size={13} />
-                          </button>
+                          {canManageBooks && (
+                            <>
+                              <button onClick={() => setEditing(book)}
+                                className="size-7 rounded-lg flex items-center justify-center text-gray-400 hover:bg-[#2C2DE0] dark:hover:bg-[#2C2DE0]/10 hover:text-[#2C2DE0] dark:hover:text-[#2C2DE0] transition-colors"
+                                title={T.actionEdit}>
+                                <Pencil size={13} />
+                              </button>
+                              <button onClick={() => setDeleting(book)}
+                                className="size-7 rounded-lg flex items-center justify-center text-gray-400 hover:bg-red-50 dark:hover:bg-red-500/10 hover:text-red-500 transition-colors"
+                                title={T.actionDelete}>
+                                <Trash2 size={13} />
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
-                    </motion.tr>
+                    </Motion.tr>
                   ))}
                 </AnimatePresence>
               </tbody>
@@ -917,10 +978,14 @@ const BooksPage = () => {
         open={Boolean(viewing)}
         onClose={() => setViewing(null)}
         onEdit={(b) => setEditing(b)}
+        canManage={canManageBooks}
+        history={borrowingHistory}
+        historyLoading={historyLoading}
+        historyError={historyError}
         T={T}
       />
 
-      <ModalShell
+      {canManageBooks && <ModalShell
         open={Boolean(editing)}
         onClose={() => setEditing(null)}
         title={editing?._id ? T.modalEdit : T.modalAdd}
@@ -952,20 +1017,20 @@ const BooksPage = () => {
             key={editing?._id || "new"}
             initial={editing?._id ? editing : null}
             onSubmit={handleFormSubmit}
-            isSaving={isSaving}
+            isLibrarian={isLibrarian}
             T={T}
           />
         )}
-      </ModalShell>
+      </ModalShell>}
 
-      <DeleteModal
+      {canManageBooks && <DeleteModal
         book={deleting}
         open={Boolean(deleting)}
         onClose={() => setDeleting(null)}
         onConfirm={() => deleteMut.mutate(deleting._id)}
         isDeleting={deleteMut.isPending}
         T={T}
-      />
+      />}
     </div>
   );
 };

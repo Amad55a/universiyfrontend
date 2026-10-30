@@ -21,13 +21,19 @@ import { toast } from "sonner";
 
 const PAGE_TITLE_KEYS = {
   "/admin/dashboard": "dashboard",
+  "/admin/library": "libraryOverview",
   "/admin/users": "users",
   "/admin/university-students": "universityStudents",
   "/admin/books": "books",
   "/admin/books/categories": "books",
+  "/admin/books/borrowing": "booksBorrowing",
+  "/admin/books/returns": "returns",
+  "/admin/seats": "seats",
+  "/admin/library/students": "studentSearch",
   "/admin/reservations": "reservations",
   "/admin/qr-checkin": "qrCheckin",
   "/admin/analytics": "analytics",
+  "/admin/reports": "reportsCenter",
   "/admin/settings": "settings",
   "/admin/profile": "profile",
 };
@@ -39,6 +45,7 @@ const AdminHeader = ({ onMenuClick, mobileOpen = false, pageTitle, breadcrumbs =
   const { t } = useLanguage();
   const ap = t.adminPanel;
   const { user, logout } = useAuth();
+  const isLibrarian = user?.role === "librarian";
   const location = useLocation();
   const navigate = useNavigate();
   const [profileOpen, setProfileOpen] = useState(false);
@@ -55,12 +62,17 @@ const AdminHeader = ({ onMenuClick, mobileOpen = false, pageTitle, breadcrumbs =
     (location.pathname.startsWith("/admin/search/") ? "searchDetail" : undefined);
   const resolvedTitle =
     pageTitle ??
-    (pageKey ? ap.pages[pageKey]?.title : ap.pages.dashboard.title);
+    (pageKey
+      ? ap.pages[pageKey]?.title ?? ap.sidebar[pageKey]
+      : ap.pages.dashboard.title);
 
   const crumbs =
     breadcrumbs.length > 0
       ? breadcrumbs
-      : [{ label: ap.breadcrumbs.home, path: "/admin/dashboard" }, { label: resolvedTitle }];
+      : [{
+          label: isLibrarian ? (ap.sidebar.libraryOverview || "Library Overview") : ap.breadcrumbs.home,
+          path: isLibrarian ? "/admin/library" : "/admin/dashboard",
+        }, { label: resolvedTitle }];
 
   useEffect(() => {
     const handler = (e) => {
@@ -76,10 +88,7 @@ const AdminHeader = ({ onMenuClick, mobileOpen = false, pageTitle, breadcrumbs =
 
   const trimmedSearch = search.trim();
   useEffect(() => {
-    if (trimmedSearch.length < 2) {
-      setSearchRequest({ query: trimmedSearch, status: "idle", categories: [] });
-      return undefined;
-    }
+    if (trimmedSearch.length < 2) return undefined;
 
     let active = true;
     const controller = new AbortController();
@@ -212,52 +221,58 @@ const AdminHeader = ({ onMenuClick, mobileOpen = false, pageTitle, breadcrumbs =
         </div>
 
         <div className="flex min-w-0 flex-1 items-center justify-end gap-2 sm:gap-3">
-          <div ref={desktopSearchRef} className="relative hidden min-w-[170px] max-w-sm flex-1 md:block">
-            <SearchBar
-              value={search}
-              onChange={(value) => { setSearch(value); setActiveSearchIndex(-1); }}
-              placeholder={ap.header.searchPlaceholder}
-              className="w-full"
-              onFocus={() => setSearchOpen(true)}
-              onKeyDown={handleSearchKeyDown}
-              expanded={searchOpen}
-              activeDescendant={activeSearchIndex >= 0 ? `admin-search-option-${activeSearchIndex}` : undefined}
-              clearLabel={ap.header.clearSearch}
-              onClear={clearSearch}
-            />
-            {searchOpen && (
-              <SearchResults
-                categories={currentSearch.categories}
-                status={currentSearch.status}
-                query={search}
-                copy={ap}
-                retry={retrySearch}
-                activeIndex={activeSearchIndex}
-                onActiveIndexChange={setActiveSearchIndex}
-                onNavigate={() => { setSearchOpen(false); clearSearch(); }}
+          {!isLibrarian && (
+            <div ref={desktopSearchRef} className="relative hidden min-w-[170px] max-w-sm flex-1 md:block">
+              <SearchBar
+                value={search}
+                onChange={(value) => { setSearch(value); setActiveSearchIndex(-1); }}
+                placeholder={ap.header.searchPlaceholder}
+                className="w-full"
+                onFocus={() => setSearchOpen(true)}
+                onKeyDown={handleSearchKeyDown}
+                expanded={searchOpen}
+                activeDescendant={activeSearchIndex >= 0 ? `admin-search-option-${activeSearchIndex}` : undefined}
+                clearLabel={ap.header.clearSearch}
+                onClear={clearSearch}
               />
-            )}
-          </div>
+              {searchOpen && (
+                <SearchResults
+                  categories={currentSearch.categories}
+                  status={currentSearch.status}
+                  query={search}
+                  copy={ap}
+                  retry={retrySearch}
+                  activeIndex={activeSearchIndex}
+                  onActiveIndexChange={setActiveSearchIndex}
+                  onNavigate={() => { setSearchOpen(false); clearSearch(); }}
+                />
+              )}
+            </div>
+          )}
 
           <ThemeToggle size="sm" />
 
-          <Link
-            to="/community"
-            className="hidden sm:flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-bold text-gray-600 dark:text-gray-300 hover:bg-[#2C2DE0]/10 hover:text-[#2C2DE0] dark:hover:text-[#2C2DE0] transition-colors"
-          >
-            <Users size={15} />
-            {t["navbar.community"] ?? "Community"}
-          </Link>
+          {!isLibrarian && (
+            <Link
+              to="/community"
+              className="hidden sm:flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-bold text-gray-600 dark:text-gray-300 hover:bg-[#2C2DE0]/10 hover:text-[#2C2DE0] dark:hover:text-[#2C2DE0] transition-colors"
+            >
+              <Users size={15} />
+              {t["navbar.community"] ?? "Community"}
+            </Link>
+          )}
 
-         <NotificationPanel />
+          {!isLibrarian && <NotificationPanel />}
 
-          <Link
-            to="/admin/settings"
-            className="hidden sm:flex rounded-xl p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
-            aria-label={ap.header.settings}
-          >
-            <Settings size={18} />
-          </Link>
+          {!isLibrarian && (
+            <Link
+              to="/admin/settings"
+              className="hidden sm:flex rounded-xl p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
+              aria-label={ap.header.settings}
+            >
+              <Settings size={18} />
+            </Link>
+          )}
 
           <div ref={profileRef} className="relative">
             <button
@@ -284,15 +299,22 @@ const AdminHeader = ({ onMenuClick, mobileOpen = false, pageTitle, breadcrumbs =
                       {user?.name}
                     </p>
                     <p className="text-[10px] text-gray-500 truncate">{user?.email}</p>
+                    {isLibrarian && user?.librarianId && (
+                      <p className="text-[10px] font-semibold text-[#2C2DE0] truncate">
+                        {user.librarianId}
+                      </p>
+                    )}
                   </div>
-                  <Link
-                    to="/admin/settings"
-                    className="flex w-full items-center gap-2 px-4 py-2.5 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-[#2C2DE0]/10 hover:text-[#2C2DE0] transition-colors"
-                    onClick={() => setProfileOpen(false)}
-                  >
-                    <User size={14} />
-                    {ap.header.viewProfile}
-                  </Link>
+                  {(
+                    <Link
+                      to={isLibrarian ? "/admin/profile" : "/admin/settings"}
+                      className="flex w-full items-center gap-2 px-4 py-2.5 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-[#2C2DE0]/10 hover:text-[#2C2DE0] transition-colors"
+                      onClick={() => setProfileOpen(false)}
+                    >
+                      <User size={14} />
+                      {ap.header.viewProfile}
+                    </Link>
+                  )}
                   <button
                     type="button"
                     onClick={handleLogout}
@@ -308,32 +330,34 @@ const AdminHeader = ({ onMenuClick, mobileOpen = false, pageTitle, breadcrumbs =
         </div>
       </div>
 
-      <div ref={mobileSearchRef} className="relative px-4 pb-3 md:hidden">
-        <SearchBar
-          value={search}
-          onChange={(value) => { setSearch(value); setActiveSearchIndex(-1); }}
-          placeholder={ap.header.searchPlaceholder}
-          className="w-full"
-          onFocus={() => setSearchOpen(true)}
-          onKeyDown={handleSearchKeyDown}
-          expanded={searchOpen}
-          activeDescendant={activeSearchIndex >= 0 ? `admin-search-option-${activeSearchIndex}` : undefined}
-          clearLabel={ap.header.clearSearch}
-          onClear={clearSearch}
-        />
-        {searchOpen && (
-          <SearchResults
-            categories={currentSearch.categories}
-            status={currentSearch.status}
-            query={search}
-            copy={ap}
-            retry={retrySearch}
-            activeIndex={activeSearchIndex}
-            onActiveIndexChange={setActiveSearchIndex}
-            onNavigate={() => { setSearchOpen(false); clearSearch(); }}
+      {!isLibrarian && (
+        <div ref={mobileSearchRef} className="relative px-4 pb-3 md:hidden">
+          <SearchBar
+            value={search}
+            onChange={(value) => { setSearch(value); setActiveSearchIndex(-1); }}
+            placeholder={ap.header.searchPlaceholder}
+            className="w-full"
+            onFocus={() => setSearchOpen(true)}
+            onKeyDown={handleSearchKeyDown}
+            expanded={searchOpen}
+            activeDescendant={activeSearchIndex >= 0 ? `admin-search-option-${activeSearchIndex}` : undefined}
+            clearLabel={ap.header.clearSearch}
+            onClear={clearSearch}
           />
-        )}
-      </div>
+          {searchOpen && (
+            <SearchResults
+              categories={currentSearch.categories}
+              status={currentSearch.status}
+              query={search}
+              copy={ap}
+              retry={retrySearch}
+              activeIndex={activeSearchIndex}
+              onActiveIndexChange={setActiveSearchIndex}
+              onNavigate={() => { setSearchOpen(false); clearSearch(); }}
+            />
+          )}
+        </div>
+      )}
     </header>
   );
 };

@@ -11,7 +11,6 @@ import QrCheckinPage from "@/admin/pages/QrCheckinPage";
 import SettingsPage from "@/admin/pages/SettingsPage";
 import SeatReservationsPage from "../pages/ReservationsPage";
 import AdminSendNotification from "../pages/AdminSendNotification";
-import AnalyticsRouter from "@/components/Analyticsrouter";
 import ReportsPage from "../pages/ReportPage";
 import AdminProfilePage from "../pages/AdminProfilePage";
 import AdminSearchDetailPage from "../pages/AdminSearchDetailPage";
@@ -36,7 +35,7 @@ const AdminRoutes = [
       { path: "reservations", element: <SeatReservationsPage /> },
       { path: "notification", element: <AdminSendNotification /> },
       { path: "qr-checkin", element: <QrCheckinPage /> },
-      { path: "analytics", element: <AnalyticsRouter /> },
+      { path: "analytics", element: <Navigate to="/admin/reports" replace /> },
       { path: "reports", element: <ReportsPage /> },
       { path: "settings", element: <SettingsPage /> },
       { path: "profile", element: <AdminProfilePage /> },

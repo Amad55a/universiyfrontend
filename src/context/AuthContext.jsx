@@ -69,12 +69,21 @@ const AuthProvider = ({ children }) => {
   };
 
   const logout = async () => {
-    if (user?.role !== "guest") {
-      await api.post("/auth/logout", {}, { withCredentials: true });
+    let serverLogoutSucceeded = true;
+    try {
+      if (user?.role !== "guest") {
+        await api.post("/auth/logout", {}, { withCredentials: true });
+      }
+    } catch (error) {
+      serverLogoutSucceeded = false;
+      console.warn("[AuthContext] server logout failed; clearing local session", error);
+    } finally {
+      localStorage.removeItem("guestUser");
+      setAccessToken(null);
+      setUser(null);
     }
-    localStorage.removeItem("guestUser");
-    setAccessToken(null);
-    setUser(null);
+
+    return serverLogoutSucceeded;
   };
 
   const updateUser = (userData) => {

@@ -60,12 +60,10 @@ const TeacherTopBar = ({ pageTitle, pageSubtitle, onMenuClick, breadcrumbs = [] 
 
   const handleLogout = async () => {
     setProfileOpen(false);
-    try {
-      await logout();
-      navigate("/login", { replace: true });
-    } catch (error) {
-      console.error("[TeacherTopBar] logout failed", error);
-      toast.error(c?.logoutError || "Unable to sign out. Please try again.");
+    const serverLogoutSucceeded = await logout();
+    navigate("/login", { replace: true });
+    if (!serverLogoutSucceeded) {
+      toast.warning("You were signed out on this device, but the server could not revoke the session.");
     }
   };
 

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import apiClient from "@/api/client";
+import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 import { useLanguage } from "@/hooks/useLanguage";
 import {
@@ -301,7 +302,7 @@ const IssueModal = ({ onClose, onSuccess, t }) => {
 };
 
 // ─── Detail Modal ─────────────────────────────────────────────────────────────
-const DetailModal = ({ borrowId, onClose, onAction, t }) => {
+const DetailModal = ({ borrowId, onClose, onAction, canManageLoan, t }) => {
     const p = t.borrow;
     const [extending, setExtending] = useState(false);
     const [newDate, setNewDate] = useState("");
@@ -381,7 +382,7 @@ const DetailModal = ({ borrowId, onClose, onAction, t }) => {
                             </div>
 
                             {/* Extend section */}
-                            {extending && (
+                            {canManageLoan && extending && (
                                 <div className="rounded-xl border border-yellow-200 dark:border-yellow-500/20 bg-yellow-50 dark:bg-yellow-500/10 p-4 space-y-3">
                                     <p className="text-sm font-bold text-yellow-700 dark:text-yellow-400">{p.newDueDate}</p>
                                     <input type="date" value={newDate} min={minDate()} onChange={(e) => setNewDate(e.target.value)}
@@ -411,13 +412,13 @@ const DetailModal = ({ borrowId, onClose, onAction, t }) => {
                                 <RotateCcw size={13} />{p.returnBook}
                             </button>
                         )}
-                        {["active", "overdue"].includes(b.status) && !extending && (
+                        {canManageLoan && ["active", "overdue"].includes(b.status) && !extending && (
                             <button onClick={() => setExtending(true)}
                                 className="flex items-center gap-1.5 rounded-xl bg-yellow-50 dark:bg-yellow-500/10 hover:bg-yellow-100 dark:hover:bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 border border-yellow-200 dark:border-yellow-500/20 px-4 py-2 text-xs font-bold transition-all">
                                 <CalendarClock size={13} />{p.extendDue}
                             </button>
                         )}
-                        {["active", "overdue"].includes(b.status) && (
+                        {canManageLoan && ["active", "overdue"].includes(b.status) && (
                             <button onClick={() => onAction("lost", b._id)}
                                 className="flex items-center gap-1.5 rounded-xl bg-orange-50 dark:bg-orange-500/10 hover:bg-orange-100 text-orange-600 dark:text-orange-400 border border-orange-200 dark:border-orange-500/20 px-4 py-2 text-xs font-bold transition-all">
                                 <Skull size={13} />{p.markLost}
@@ -435,14 +436,16 @@ const DetailModal = ({ borrowId, onClose, onAction, t }) => {
 };
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
-const BorrowManagementPage = () => {
+const BorrowManagementPage = ({ initialStatus = "all" }) => {
     const { t } = useLanguage();
+    const { user } = useAuth();
+    const isLibrarian = user?.role === "librarian";
     const p = t.borrow;
     const queryClient = useQueryClient();
 
     const [page, setPage] = useState(1);
     const [search, setSearch] = useState("");
-    const [status, setStatus] = useState("all");
+    const [status, setStatus] = useState(initialStatus);
     const [issueOpen, setIssueOpen] = useState(false);
     const [viewingId, setViewingId] = useState(null);
 
@@ -450,6 +453,7 @@ const BorrowManagementPage = () => {
     const { data: statsData } = useQuery({
         queryKey: ["borrow-stats"],
         queryFn: async () => (await api.stats()).data.data,
+        enabled: !isLibrarian,
         refetchInterval: 30000,
     });
 
@@ -499,12 +503,12 @@ const BorrowManagementPage = () => {
             </div>
 
             {/* Stats */}
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 mb-6">
+            {!isLibrarian && <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 mb-6">
                 <StatCard label={p.statsActive} value={stats.active} icon={BookOpen} accent="bg-[#2C2DE0]" />
                 <StatCard label={p.statsOverdue} value={stats.overdue} icon={AlertTriangle} accent="bg-red-500" pulse={stats.overdue > 0} />
                 <StatCard label={p.statsReturnedToday} value={stats.returnedToday} icon={CheckCircle2} accent="bg-gray-600" />
                 <StatCard label={p.statsTotal} value={stats.total} icon={BarChart3} accent="bg-black dark:bg-white/20" />
-            </div>
+            </div>}
 
             {/* Filters */}
             <div className="flex flex-wrap gap-3 mb-4">
@@ -631,7 +635,7 @@ const BorrowManagementPage = () => {
 
             {/* Modals */}
             {issueOpen && <IssueModal onClose={() => setIssueOpen(false)} onSuccess={invalidate} t={t} />}
-            {viewingId && <DetailModal borrowId={viewingId} onClose={() => setViewingId(null)} onAction={(type, id, date) => { handleAction(type, id, date); setViewingId(null); }} t={t} />}
+            {viewingId && <DetailModal borrowId={viewingId} onClose={() => setViewingId(null)} onAction={(type, id, date) => { handleAction(type, id, date); setViewingId(null); }} canManageLoan={!isLibrarian} t={t} />}
         </PageTransition>
     );
 };

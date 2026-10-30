@@ -81,6 +81,7 @@ const SidebarNavItem = ({
   return (
     <NavLink
       to={item.path}
+      end
       className={({ isActive: active }) =>
         cn(
           "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-all duration-200",
@@ -153,7 +154,10 @@ const Sidebar = ({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile }) => 
         )}
       >
         {showBrand && (
-          <Link to="/admin/dashboard" className="flex min-w-0 items-center overflow-hidden">
+          <Link
+            to={user?.role === "librarian" ? "/admin/library" : "/admin/dashboard"}
+            className="flex min-w-0 items-center overflow-hidden"
+          >
             <UnicoreLogo />
           </Link>
         )}

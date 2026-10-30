@@ -76,6 +76,25 @@ export const fetchAdminUserAuditLogs = (id) =>
 export const deleteAdminUser = (id) =>
   api.delete(`${ADMIN_BASE}/users/${id}`);
 
+// ─── Independent librarian accounts ────────────────────────────────────────
+export const fetchAdminLibrarians = (params) =>
+  api.get(`${ADMIN_BASE}/librarians`, { params: buildParams(params) });
+
+export const createAdminLibrarian = (payload) =>
+  api.post(`${ADMIN_BASE}/librarians`, payload);
+
+export const updateAdminLibrarian = (id, payload) =>
+  api.put(`${ADMIN_BASE}/librarians/${id}`, payload);
+
+export const updateAdminLibrarianStatus = (id, status) =>
+  api.patch(`${ADMIN_BASE}/librarians/${id}/status`, { status });
+
+export const resetAdminLibrarianPassword = (id, password) =>
+  api.post(`${ADMIN_BASE}/librarians/${id}/reset-password`, { password });
+
+export const searchLibraryStudents = (params) =>
+  api.get(`${ADMIN_BASE}/library/students/search`, { params: buildParams(params) });
+
 // ─── Registry (formerly "university students") ──────────────────────────────
 // NOTE: the backend model is now `Registry`, not `UniversityStudent` — these
 // still point at /university-students for backwards compat with your existing

@@ -15,13 +15,15 @@ import {
   ChevronRight,
   UserCheck,
   Loader2,
-  GraduationCap,
 } from "lucide-react";
+import LibrariansTab from "./LibrariansTab";
 
 import { useLanguage } from "@/hooks/useLanguage";
+import { toast } from "sonner";
 
 import {
   fetchAdminUsers,
+  fetchAdminUser,
   fetchAdminRoles,
   fetchAdminAuditLogs,
   updateAdminUserRole,
@@ -29,6 +31,11 @@ import {
   updateAdminUserPermissions,
   USER_FEATURE_KEYS,
 } from "@/api/admin";
+import {
+  createPermissionOverridePatch,
+  getCurrentStatus,
+  normalizeOverrides,
+} from "./userAuthorityHelpers";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const ROLE_COLORS = {
@@ -46,6 +53,7 @@ const STATUS_CONFIG = {
   suspended: { icon: Clock, color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-50 dark:bg-amber-900/20", label: "Suspended" },
   banned: { icon: XCircle, color: "text-red-600 dark:text-red-400", bg: "bg-red-50 dark:bg-red-900/20", label: "Banned" },
   pending: { icon: AlertCircle, color: "text-slate-500 dark:text-slate-400", bg: "bg-slate-50 dark:bg-slate-900/20", label: "Pending" },
+  unknown: { icon: AlertCircle, color: "text-slate-500 dark:text-slate-400", bg: "bg-slate-100 dark:bg-slate-700", label: "Unknown" },
 };
 
 const formatRelativeTime = (date) => {
@@ -90,7 +98,7 @@ const RoleBadge = ({ role, t }) => {
 };
 
 const StatusBadge = ({ status, t }) => {
-  const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.active;
+  const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.unknown;
   const Icon = cfg.icon;
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${cfg.bg} ${cfg.color}`}>
@@ -139,7 +147,7 @@ const RoleChangeModal = ({ user, roles, onClose, onSave, t }) => {
     setSaving(true);
     setError(null);
     try {
-      await onSave(user._id, selectedRole);
+      await onSave(user._id || user.id, selectedRole);
       onClose();
     } catch (err) {
       setError(getErrorMessage(err, "Could not update this user's role. Please try again."));
@@ -171,7 +179,7 @@ const RoleChangeModal = ({ user, roles, onClose, onSave, t }) => {
         <div>
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">{ua.roleModal.newRole}</label>
           <div className="grid grid-cols-2 gap-2">
-            {roles.filter((r) => ["student", "teacher", "admin", "librarian"].includes(r.name)).map((role) => {
+            {roles.filter((r) => ["student", "teacher", "admin"].includes(r.name)).map((role) => {
               const cfg = roleColor(role.name);
               const isSelected = selectedRole === role.name;
               return (
@@ -230,33 +238,60 @@ const FEATURE_LABELS = {
 };
 
 const FeatureLocksModal = ({ user, onClose, onSave, t }) => {
-  const raw = user?.permissionOverrides;
-  const initial = raw instanceof Map
-    ? Object.fromEntries(raw.entries())
-    : { ...(raw || {}) };
-  const [overrides, setOverrides] = useState(initial);
+  const featureCopy = t.userAuthority.featureModal;
+  const [overrides, setOverrides] = useState({});
+  const [originalOverrides, setOriginalOverrides] = useState({});
+  const [loadingOverrides, setLoadingOverrides] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (!user) return undefined;
+    let active = true;
+    const loadOverrides = async () => {
+      setLoadingOverrides(true);
+      setError(null);
+      try {
+        let detail = user;
+        if (!Object.prototype.hasOwnProperty.call(user, "permissionOverrides")) {
+          const response = await fetchAdminUser(user._id || user.id);
+          detail = response?.data?.data?.user ?? response?.data?.user ?? response?.data?.data;
+        }
+        if (!detail || !Object.prototype.hasOwnProperty.call(detail, "permissionOverrides")) {
+          throw new Error("Permission overrides were not included in the user details response.");
+        }
+        const normalized = normalizeOverrides(detail.permissionOverrides);
+        if (active) {
+          setOverrides(normalized);
+          setOriginalOverrides(normalized);
+        }
+      } catch (err) {
+        if (active) setError(getErrorMessage(err, "Could not load this user's permission overrides."));
+      } finally {
+        if (active) setLoadingOverrides(false);
+      }
+    };
+    loadOverrides();
+    return () => { active = false; };
+  }, [user]);
 
   const toggle = (key) => {
     setOverrides((prev) => {
       const next = { ...prev };
-      // false = blocked; missing/true = allowed
-      if (next[key] === false) delete next[key];
+      if (next[key] === false) next[key] = true;
+      else if (next[key] === true) delete next[key];
       else next[key] = false;
       return next;
     });
   };
 
   const handleSave = async () => {
+    const payload = createPermissionOverridePatch(originalOverrides, overrides);
+    if (Object.keys(payload).length === 0) return onClose();
+
     setSaving(true);
     setError(null);
     try {
-      // Send full map of known keys: false blocked, true allowed (clears lock)
-      const payload = {};
-      for (const key of USER_FEATURE_KEYS) {
-        payload[key] = overrides[key] === false ? false : null;
-      }
       await onSave(user._id || user.id, payload);
       onClose();
     } catch (err) {
@@ -267,39 +302,49 @@ const FeatureLocksModal = ({ user, onClose, onSave, t }) => {
   };
 
   return (
-    <Modal open={!!user} onClose={onClose} title="Feature locks">
+    <Modal open={!!user} onClose={onClose} title={featureCopy.title}>
       <div className="space-y-4">
         <p className="text-xs text-slate-500 dark:text-slate-400">
-          Turn off a feature for <strong>{user?.fullName || user?.name || user?.email}</strong> only.
-          Role permissions still apply for everything else.
+          {featureCopy.description} <strong>{user?.fullName || user?.name || user?.email}</strong>
         </p>
-        {error && <p className="text-xs text-red-500">{error}</p>}
+        <InlineError message={error} />
+        {loadingOverrides ? (
+          <div className="flex items-center justify-center py-8 text-slate-500">
+            <Loader2 className="w-5 h-5 animate-spin mr-2" />{featureCopy.loading}
+          </div>
+        ) : (
         <div className="space-y-2">
           {USER_FEATURE_KEYS.map((key) => {
-            const blocked = overrides[key] === false;
+            const state = Object.prototype.hasOwnProperty.call(overrides, key)
+              ? overrides[key] ? "allowed" : "blocked"
+              : "inherit";
             return (
               <button
                 key={key}
                 type="button"
                 onClick={() => toggle(key)}
+                disabled={Boolean(error) || saving}
                 className={`w-full flex items-center justify-between rounded-xl border px-3 py-2.5 text-sm transition-all ${
-                  blocked
+                  state === "blocked"
                     ? "border-red-300 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300"
-                    : "border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300"
+                    : state === "allowed"
+                      ? "border-green-300 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300"
+                      : "border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300"
                 }`}
               >
                 <span>{FEATURE_LABELS[key] || key}</span>
                 <span className="text-[10px] font-bold uppercase tracking-wide">
-                  {blocked ? "Blocked" : "Allowed"}
+                  {state === "blocked" ? featureCopy.blocked : state === "allowed" ? featureCopy.allowed : featureCopy.roleDefault}
                 </span>
               </button>
             );
           })}
         </div>
+        )}
         <div className="flex gap-2 justify-end pt-2">
-          <button type="button" onClick={onClose} className="px-4 py-2 rounded-xl text-sm bg-slate-100 dark:bg-slate-800">Cancel</button>
-          <button type="button" onClick={handleSave} disabled={saving} className="px-4 py-2 rounded-xl text-sm font-bold text-white bg-[#2C2DE0] disabled:opacity-50">
-            {saving ? "Saving…" : "Save locks"}
+          <button type="button" onClick={onClose} className="px-4 py-2 rounded-xl text-sm bg-slate-100 dark:bg-slate-800">{featureCopy.cancel}</button>
+          <button type="button" onClick={handleSave} disabled={saving || loadingOverrides || Boolean(error)} className="px-4 py-2 rounded-xl text-sm font-bold text-white bg-[#2C2DE0] disabled:opacity-50">
+            {saving ? featureCopy.saving : featureCopy.save}
           </button>
         </div>
       </div>
@@ -308,8 +353,8 @@ const FeatureLocksModal = ({ user, onClose, onSave, t }) => {
 };
 
 // ─── Status Change Modal ──────────────────────────────────────────────────────
-const StatusChangeModal = ({ user, onClose, onSave, t }) => {
-  const [selectedStatus, setSelectedStatus] = useState(user?.accountStatus || "active");
+const StatusChangeModal = ({ user, initialStatus, onClose, onSave, t }) => {
+  const [selectedStatus, setSelectedStatus] = useState(initialStatus || getCurrentStatus(user));
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -317,10 +362,11 @@ const StatusChangeModal = ({ user, onClose, onSave, t }) => {
   const statuses = ["active", "suspended", "banned", "pending"];
 
   const handleSave = async () => {
+    if (selectedStatus === "unknown" || selectedStatus === getCurrentStatus(user)) return;
     setSaving(true);
     setError(null);
     try {
-      await onSave(user._id, selectedStatus, reason);
+      await onSave(user._id || user.id, selectedStatus, reason);
       onClose();
     } catch (err) {
       setError(getErrorMessage(err, "Could not update this user's status. Please try again."));
@@ -338,7 +384,7 @@ const StatusChangeModal = ({ user, onClose, onSave, t }) => {
             <p className="font-medium text-slate-900 dark:text-white text-sm">{user.name}</p>
             <p className="text-xs text-slate-500 dark:text-slate-400">{user.email}</p>
           </div>
-          <div className="ml-auto"><StatusBadge status={user.accountStatus} t={t} /></div>
+          <div className="ml-auto"><StatusBadge status={getCurrentStatus(user)} t={t} /></div>
         </div>
 
         <InlineError message={error} />
@@ -388,7 +434,7 @@ const StatusChangeModal = ({ user, onClose, onSave, t }) => {
           </button>
           <button
             onClick={handleSave}
-            disabled={saving}
+            disabled={saving || selectedStatus === "unknown" || selectedStatus === getCurrentStatus(user)}
             className="flex-1 px-4 py-2.5 text-sm font-medium bg-[#2C2DE0] hover:bg-[#2C2DE0] disabled:opacity-50 text-white rounded-xl transition-colors flex items-center justify-center gap-2 text-white text-sm font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150 group"
           >
             {saving ? <><Loader2 className="w-4 h-4 animate-spin" />{ua.statusModal.saving}</> : ua.statusModal.confirm}
@@ -400,47 +446,57 @@ const StatusChangeModal = ({ user, onClose, onSave, t }) => {
 };
 
 // ─── USERS TAB ────────────────────────────────────────────────────────────────
-const UsersTab = ({ t, users, roles, loading, onRoleChange, onStatusChange, onFeatureLocks }) => {
+const UsersTab = ({
+  t,
+  users,
+  roles,
+  loading,
+  pagination,
+  filters,
+  onFilterChange,
+  onPageChange,
+  onRoleChange,
+  onStatusChange,
+  onFeatureLocks,
+}) => {
   const [search, setSearch] = useState("");
-  const [roleFilter, setRoleFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
   const [roleModalUser, setRoleModalUser] = useState(null);
   const [statusModalUser, setStatusModalUser] = useState(null);
   const [locksModalUser, setLocksModalUser] = useState(null);
   const ua = t.userAuthority;
 
+  useEffect(() => {
+    const timer = setTimeout(() => onFilterChange({ search }), 300);
+    return () => clearTimeout(timer);
+  }, [search, onFilterChange]);
+
+  const roleFilter = filters.role || "all";
+  const statusFilter = filters.status || "all";
   const filtered = useMemo(() => {
     return users.filter((u) => {
       const q = search.toLowerCase();
-      const matchSearch = !q || u.name?.toLowerCase().includes(q) || u.fullName?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q);
+      const matchSearch = !q || u.name?.toLowerCase().includes(q) || u.fullName?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q) || String(u.id || "").toLowerCase().includes(q) || String(u._id || "").toLowerCase().includes(q);
       const matchRole = roleFilter === "all" || u.role === roleFilter;
-      const matchStatus = statusFilter === "all" || (u.accountStatus || u.status) === statusFilter;
+      const matchStatus = statusFilter === "all" || getCurrentStatus(u) === statusFilter;
       return matchSearch && matchRole && matchStatus;
     });
   }, [users, search, roleFilter, statusFilter]);
 
-  const stats = useMemo(() => ({
-    total: users.length,
-    active: users.filter((u) => (u.accountStatus || u.status) === "active").length,
-  }), [users]);
+  const totalUsers = pagination?.total ?? users.length;
 
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {[
-          { label: ua.users.totalUsers, value: stats.total, color: "text-slate-900 dark:text-white", icon: Users },
-          { label: ua.users.activeUsers, value: stats.active, color: "text-[#2C2DE0] dark:text-[#2C2DE0]", icon: UserCheck },
-          { label: ua.roleLabels.student ? `${ua.roleLabels.student}s` : "Students", value: users.filter((u) => u.role === "student").length, color: "text-[#2C2DE0] dark:text-[#2C2DE0]", icon: GraduationCap },
-          { label: ua.roleLabels.teacher, value: users.filter((u) => u.role === "teacher").length, color: "text-amber-600 dark:text-amber-400", icon: Shield },
-          { label: ua.roleLabels.librarian, value: users.filter((u) => u.role === "librarian").length, color: "text-blue-600 dark:text-blue-400", icon: Key },
-          { label: ua.roleLabels.admin ? `${ua.roleLabels.admin}s` : "Admins", value: users.filter((u) => u.role === "admin").length, color: "text-red-600 dark:text-red-400", icon: Shield },
-        ].map(({ label, value, color, icon: Icon }) => (
+          { label: ua.users.totalUsers, value: totalUsers, icon: <Users className="w-4 h-4 text-slate-500" /> },
+          { label: ua.users.showingUsers, value: users.length, icon: <UserCheck className="w-4 h-4 text-slate-500" /> },
+        ].map(({ label, value, icon }) => (
           <div key={label} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">{label}</span>
-              <Icon className={`w-4 h-4 ${color}`} />
+              {icon}
             </div>
-            <p className={`text-2xl font-bold ${color}`}>{value}</p>
+            <p className="text-2xl font-bold text-slate-900 dark:text-white">{value}</p>
           </div>
         ))}
       </div>
@@ -457,7 +513,7 @@ const UsersTab = ({ t, users, roles, loading, onRoleChange, onStatusChange, onFe
         </div>
         <select
           value={roleFilter}
-          onChange={(e) => setRoleFilter(e.target.value)}
+          onChange={(e) => onFilterChange({ role: e.target.value })}
           className="px-3 py-2.5 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-[#2C2DE0]"
         >
           <option value="all">{ua.users.allRoles}</option>
@@ -465,7 +521,7 @@ const UsersTab = ({ t, users, roles, loading, onRoleChange, onStatusChange, onFe
         </select>
         <select
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
+          onChange={(e) => onFilterChange({ status: e.target.value })}
           className="px-3 py-2.5 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-[#2C2DE0]"
         >
           <option value="all">{ua.users.allStatuses}</option>
@@ -497,7 +553,7 @@ const UsersTab = ({ t, users, roles, loading, onRoleChange, onStatusChange, onFe
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                 {filtered.map((user) => (
-                  <tr key={user._id} className="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors group">
+                  <tr key={user._id || user.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors group">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
                         <UserAvatar user={user} />
@@ -508,7 +564,25 @@ const UsersTab = ({ t, users, roles, loading, onRoleChange, onStatusChange, onFe
                       </div>
                     </td>
                     <td className="px-4 py-3"><RoleBadge role={user.role} t={t} /></td>
-                    <td className="px-4 py-3"><StatusBadge status={user.accountStatus || user.status || "active"} t={t} /></td>
+                    <td className="px-4 py-3"><StatusBadge status={getCurrentStatus(user)} t={t} /></td>
+                    <td className="px-4 py-3">
+                      {Object.prototype.hasOwnProperty.call(user, "permissionOverrides") ? (
+                        (() => {
+                          const overrides = normalizeOverrides(user.permissionOverrides);
+                          const allowed = Object.values(overrides).filter((value) => value === true).length;
+                          const blocked = Object.values(overrides).filter((value) => value === false).length;
+                          return (
+                            <span className="text-xs text-slate-600 dark:text-slate-300">
+                              {allowed + blocked === 0
+                                ? ua.users.noOverrides
+                                : `${allowed} ${ua.users.allowedOverrides} · ${blocked} ${ua.users.blockedOverrides}`}
+                            </span>
+                          );
+                        })()
+                      ) : (
+                        <span className="text-xs text-slate-400">{ua.users.overridesNotInList}</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-col gap-1">
                         <span className={`text-xs flex items-center gap-1 ${user.emailVerified || user.isVerified ? "text-[#2C2DE0] dark:text-[#2C2DE0]" : "text-slate-400"}`}>
@@ -523,9 +597,10 @@ const UsersTab = ({ t, users, roles, loading, onRoleChange, onStatusChange, onFe
                     </td>
                     <td className="px-4 py-3 text-xs text-slate-500 dark:text-slate-400">{formatRelativeTime(user.lastLogin)}</td>
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity">
                         <button
                           onClick={() => setRoleModalUser(user)}
+                          type="button"
                           className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium bg-[#2C2DE0]/10 dark:bg-[#2C2DE0]/20 text-[#2C2DE0] dark:text-[#2C2DE0] hover:bg-[#2C2DE0]/20 dark:hover:bg-[#2C2DE0]/40 rounded-lg transition-colors"
                         >
                           <Shield className="w-3 h-3" />
@@ -533,17 +608,24 @@ const UsersTab = ({ t, users, roles, loading, onRoleChange, onStatusChange, onFe
                         </button>
                         <button
                           onClick={() => setLocksModalUser(user)}
+                          type="button"
                           className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-300 rounded-lg transition-colors"
                         >
                           <Key className="w-3 h-3" />
                           Locks
                         </button>
                         <button
-                          onClick={() => setStatusModalUser(user)}
+                          onClick={() => setStatusModalUser({
+                            ...user,
+                            requestedStatus: getCurrentStatus(user) === "active" ? "suspended" : "active",
+                          })}
+                          type="button"
                           className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg transition-colors"
                         >
                           <UserCheck className="w-3 h-3" />
-                          {ua.users.actions.editStatus}
+                          {getCurrentStatus(user) === "active"
+                            ? ua.users.actions.deactivate
+                            : ua.users.actions.activate}
                         </button>
                       </div>
                     </td>
@@ -556,13 +638,30 @@ const UsersTab = ({ t, users, roles, loading, onRoleChange, onStatusChange, onFe
       </div>
 
       {roleModalUser && (
-        <RoleChangeModal user={roleModalUser} roles={roles} onClose={() => setRoleModalUser(null)} onSave={onRoleChange} t={t} />
+        <RoleChangeModal key={roleModalUser._id || roleModalUser.id} user={roleModalUser} roles={roles} onClose={() => setRoleModalUser(null)} onSave={onRoleChange} t={t} />
       )}
       {statusModalUser && (
-        <StatusChangeModal user={statusModalUser} onClose={() => setStatusModalUser(null)} onSave={onStatusChange} t={t} />
+        <StatusChangeModal key={statusModalUser._id || statusModalUser.id} user={statusModalUser} initialStatus={statusModalUser.requestedStatus} onClose={() => setStatusModalUser(null)} onSave={onStatusChange} t={t} />
       )}
       {locksModalUser && (
-        <FeatureLocksModal user={locksModalUser} onClose={() => setLocksModalUser(null)} onSave={onFeatureLocks} t={t} />
+        <FeatureLocksModal key={locksModalUser._id || locksModalUser.id} user={locksModalUser} onClose={() => setLocksModalUser(null)} onSave={onFeatureLocks} t={t} />
+      )}
+      {!loading && pagination?.totalPages > 1 && (
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs text-slate-500">
+            {ua.users.pageOf
+              .replace("{page}", String(pagination.page || filters.page || 1))
+              .replace("{pages}", String(pagination.totalPages))}
+          </p>
+          <div className="flex gap-2">
+            <button type="button" onClick={() => onPageChange(Math.max(1, (filters.page || 1) - 1))} disabled={(filters.page || 1) <= 1} className="rounded-lg border px-3 py-1.5 text-sm disabled:opacity-40">
+              {ua.users.previous}
+            </button>
+            <button type="button" onClick={() => onPageChange(Math.min(pagination.totalPages, (filters.page || 1) + 1))} disabled={(filters.page || 1) >= pagination.totalPages} className="rounded-lg border px-3 py-1.5 text-sm disabled:opacity-40">
+              {ua.users.next}
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -653,6 +752,8 @@ export default function UserAuthorityPage() {
 
   const [activeTab, setActiveTab] = useState("users");
   const [users, setUsers] = useState([]);
+  const [userFilters, setUserFilters] = useState({ page: 1, limit: 100, search: "", role: "all", status: "all" });
+  const [userPagination, setUserPagination] = useState({ page: 1, totalPages: 1, total: 0 });
   const [roles, setRoles] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
 
@@ -671,15 +772,20 @@ export default function UserAuthorityPage() {
   const loadUsers = useCallback(async () => {
     setLoadingUsers(true);
     try {
-      const res = await fetchAdminUsers({ limit: 200 });
+      const res = await fetchAdminUsers(userFilters);
       setUsers(Array.isArray(res?.data?.data) ? res.data.data : []);
+      setUserPagination(res?.data?.pagination || {
+        page: userFilters.page,
+        totalPages: 1,
+        total: Array.isArray(res?.data?.data) ? res.data.data.length : 0,
+      });
     } catch (err) {
       console.error("Failed to load users:", err);
       setPageError(getErrorMessage(err, "Could not load users from the server."));
     } finally {
       setLoadingUsers(false);
     }
-  }, []);
+  }, [userFilters]);
 
   const loadRoles = useCallback(async () => {
     setLoadingRoles(true);
@@ -713,27 +819,49 @@ export default function UserAuthorityPage() {
     loadAuditLogs();
   }, [loadUsers, loadRoles, loadAuditLogs]);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => {
+    const timer = setTimeout(() => { void loadUsers(); }, 0);
+    return () => clearTimeout(timer);
+  }, [loadUsers]);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      void loadRoles();
+      void loadAuditLogs();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [loadRoles, loadAuditLogs]);
+
+  const handleUserFilterChange = useCallback((updates) => {
+    setUserFilters((current) => ({ ...current, ...updates, page: 1 }));
+  }, []);
+
+  const handleUserPageChange = useCallback((page) => {
+    setUserFilters((current) => ({ ...current, page }));
+  }, []);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
   const handleRoleChange = async (userId, newRole) => {
     await updateAdminUserRole(userId, newRole);
+    toast.success(ua.roleModal.successMessage);
     await loadUsers();
   };
 
   const handleStatusChange = async (userId, newStatus, reason) => {
     await updateAdminUserStatus(userId, newStatus, reason);
+    toast.success(ua.statusModal.successMessage);
     await loadUsers();
   };
 
   const handleFeatureLocks = async (userId, overrides) => {
     await updateAdminUserPermissions(userId, overrides);
+    toast.success(ua.users.permissionsSaved);
     await loadUsers();
   };
 
   const tabs = [
-    { id: "users", label: ua.tabs.users, icon: Users, count: users.length },
-    { id: "auditLog", label: ua.tabs.auditLog, icon: ClipboardList, count: auditLogs.length },
+    { id: "users", label: ua.tabs.users, icon: <Users className="w-4 h-4" />, count: userPagination.total },
+    { id: "librarians", label: ua.tabs.librarians || "Librarians", icon: <Shield className="w-4 h-4" /> },
+    { id: "auditLog", label: ua.tabs.auditLog, icon: <ClipboardList className="w-4 h-4" />, count: auditLogs.length },
   ];
 
   return (
@@ -772,7 +900,7 @@ export default function UserAuthorityPage() {
         )}
 
         <div className="flex gap-1 p-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl mb-6 overflow-x-auto">
-          {tabs.map(({ id, label, icon: Icon, count }) => (
+          {tabs.map(({ id, label, icon, count }) => (
             <button
               key={id}
               onClick={() => setActiveTab(id)}
@@ -782,7 +910,7 @@ export default function UserAuthorityPage() {
                   : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700"
               }`}
             >
-              <Icon className="w-4 h-4" />
+              {icon}
               {label}
               {count !== undefined && (
                 <span className={`text-xs px-1.5 py-0.5 rounded-full font-semibold ${
@@ -801,6 +929,10 @@ export default function UserAuthorityPage() {
             users={users}
             roles={roles}
             loading={loadingUsers}
+            pagination={userPagination}
+            filters={userFilters}
+            onFilterChange={handleUserFilterChange}
+            onPageChange={handleUserPageChange}
             onRoleChange={handleRoleChange}
             onStatusChange={handleStatusChange}
             onFeatureLocks={handleFeatureLocks}
@@ -809,6 +941,7 @@ export default function UserAuthorityPage() {
         {activeTab === "auditLog" && (
           <AuditLogTab t={t} logs={auditLogs} loading={loadingAuditLogs} />
         )}
+        {activeTab === "librarians" && <LibrariansTab />}
       </div>
     </div>
   );

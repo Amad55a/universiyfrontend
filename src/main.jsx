@@ -18,7 +18,7 @@ import PrivateRouter from './routes/PrivateRouter'
 import PublicRoute from './routes/PublicRoute'
 import "@fontsource/inter";
 import RoleRoute from './routes/RoleRoutes'
-import AdminLayout from './admin/layout/AdminLayout'
+import AdminAccessRoute from './admin/routes/AdminAccessRoute'
 import AdminDashboardPage from './admin/pages/AdminDashboardPage'
 import AdminProfilePage from './admin/pages/AdminProfilePage'
 import AdminSearchDetailPage from './admin/pages/AdminSearchDetailPage'
@@ -57,6 +57,8 @@ import MyLibrary from './student/components/DashboardComponents/myLibrary';
 import MyBorrowsPage from './student/components/DashboardComponents/Myborrowspage';
 import RecentlyViewedPage from './student/pages/RecentlyViewedPage';
 import UserAuthorityPage from './admin/pages/userAuthorityPage';
+import LibraryOverviewPage from './admin/pages/LibraryOverviewPage';
+import LibraryStudentSearchPage from './admin/pages/LibraryStudentSearchPage';
 import AdminGroupsPage from './admin/pages/GroupsPage';
 import TeacherDashboardPage from './teacher/page/TeacherDashboardPage';
 import { teacherRoutes } from './teacher/TeacherRoutes';
@@ -134,9 +136,7 @@ createRoot(document.getElementById('root')).render(
                                         <Route path="/my-qr" element={<MyQrCode />} />
                                         <Route path="/forgot-password" element={<ForgotPassword />} />
                                         <Route path="/verify-university-id" element={
-                                            <PrivateRouter>
-                                                <VerifyUniversityId />
-                                            </PrivateRouter>
+                                            <VerifyUniversityId />
                                         } />
 
                                         <Route
@@ -179,15 +179,15 @@ createRoot(document.getElementById('root')).render(
                                             path="/admin"
                                             element={
                                                 <PrivateRouter>
-                                                    <RoleRoute role="admin">
-                                                        <AdminLayout />
-                                                    </RoleRoute>
+                                                    <AdminAccessRoute />
                                                 </PrivateRouter>
                                             }
                                         >
 
                                             <Route index element={<Navigate to="dashboard" replace />} />
                                             <Route path="dashboard" element={<AdminDashboardPage />} />
+                                            <Route path="library" element={<LibraryOverviewPage />} />
+                                            <Route path="library/students" element={<LibraryStudentSearchPage />} />
                                             <Route path="users" element={<UsersPage />} />
                                             <Route path="users/:id" element={<UserDetailsPage />} />
                                             <Route path="groups" element={<AdminGroupsPage />} />
@@ -195,7 +195,8 @@ createRoot(document.getElementById('root')).render(
                                             <Route path="seats/:id/timeline" element={<SeatTimelinePage />} />
                                             <Route path="seats" element={<SeatsPage />} />
                                             <Route path="books" element={<BooksPage />} />
-                                            <Route path="books/borrowing" element={<BorrowManagementPage />} />
+                                            <Route path="books/borrowing" element={<BorrowManagementPage key="borrowing" />} />
+                                            <Route path="books/returns" element={<BorrowManagementPage key="returns" initialStatus="returned" />} />
                                             <Route path="reservations" element={<SeatReservationsPage />} />
                                             <Route path="notifications" element={<AdminSendNotification />} />
                                             <Route path="my-notifications" element={<NotificationsPage />} />
@@ -205,11 +206,12 @@ createRoot(document.getElementById('root')).render(
                                             <Route path="settings" element={<SettingsPage />} />
                                             <Route path="profile" element={<AdminProfilePage />} />
                                             <Route path="search/:type/:id" element={<AdminSearchDetailPage />} />
-                                            <Route path="/admin/user-authority" element={<UserAuthorityPage />} />
+                                            <Route path="user-authority" element={<UserAuthorityPage />} />
                                         </Route>
 
                                         <Route path="/adminpanel" element={<Navigate to="/admin/dashboard" replace />} />
                                         <Route path="/admin/user-management" element={<Navigate to="/admin/users" replace />} />
+                                        <Route path="/librarian/*" element={<Navigate to="/admin/library" replace />} />
 
                                         <Route path="*" element={<NotFound />} />
 

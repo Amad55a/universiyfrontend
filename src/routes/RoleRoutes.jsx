@@ -1,9 +1,10 @@
-import { Navigate, useLocation } from "react-router-dom";
+import React from "react";
+import { Navigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
+import { LIBRARIAN_HOME } from "@/admin/routes/adminAccess";
 
 const RoleRoute = ({ children, role }) => {
-  const { user, loading } = useAuth();
-  const location = useLocation();
+  const { user } = useAuth();
 
   // if (loading) return null;
   // if (!user) {
@@ -31,7 +32,7 @@ if (requiresVerification && !user.isUniversityVerified) {
         return <Navigate to="/teacher/dashboard" replace />;
 
       case "librarian":
-        return <Navigate to="/librarian/dashboard" replace />;
+        return <Navigate to={LIBRARIAN_HOME} replace />;
 
       default:
         return <Navigate to="/dashboard" replace />;

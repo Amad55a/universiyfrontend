@@ -57,12 +57,10 @@ const CommunityHeader = ({ onWritePost, notificationCount = 0 }) => {
 
   const handleLogout = async () => {
     setProfileOpen(false);
-    try {
-      await logout();
-      navigate("/login", { replace: true });
-    } catch (error) {
-      console.error("[CommunityHeader] logout failed", error);
-      toast.error(t["nav.logoutError"] ?? "Unable to sign out. Please try again.");
+    const serverLogoutSucceeded = await logout();
+    navigate("/login", { replace: true });
+    if (!serverLogoutSucceeded) {
+      toast.warning("You were signed out on this device, but the server could not revoke the session.");
     }
   };
 

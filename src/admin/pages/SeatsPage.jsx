@@ -12,6 +12,7 @@ import ConfirmDialog from "@/admin/components/ConfirmDialog";
 import StatusBadge from "@/admin/components/StatusBadge";
 import { useLanguage } from "@/hooks/useLanguage";
 import { SOMALIA_TIME_ZONE } from "@/utils/time";
+import { useAuth } from "@/context/AuthContext";
 import {
   fetchAdminSeats,
   createAdminSeat,
@@ -21,7 +22,7 @@ import {
   bulkGenerateAdminSeats,
 } from "@/api/admin";
 
-const emptyForm = { seatNumber: "", zone: "general" };
+const emptyForm = { seatNumber: "", zone: "general", section: "", description: "", status: "available" };
 const formatBookingTime = (value) => value
   ? new Date(value).toLocaleTimeString("en-US", {
     hour: "numeric",
@@ -39,6 +40,8 @@ const formatBookingDate = (value) => value
 
 const SeatsPage = () => {
   const { t } = useLanguage();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   const ap = t.adminPanel;
   const p = ap.pages.seats;
   const c = ap.common;
@@ -132,7 +135,13 @@ const SeatsPage = () => {
 
   const openEdit = (seat) => {
     setEditingSeat(seat);
-    setForm({ seatNumber: seat.seatNumber || "", zone: seat.zone || "general" });
+    setForm({
+      seatNumber: seat.seatNumber || "",
+      zone: seat.zone || "general",
+      section: seat.section || "",
+      description: seat.description || "",
+      status: seat.status || (seat.isActive ? "available" : "unavailable"),
+    });
     setFormErrors({});
   };
 
@@ -182,8 +191,8 @@ const SeatsPage = () => {
       label: p.colPhysicalStatus,
       render: (row) => (
         <StatusBadge
-          label={row.isActive ? p.seatInService : p.seatOutOfService}
-          tone={row.isActive ? "green" : "gray"}
+          label={row.status === "maintenance" ? "Under maintenance" : row.isActive ? p.seatInService : p.seatOutOfService}
+          tone={row.status === "maintenance" ? "orange" : row.isActive ? "green" : "gray"}
         />
       ),
     },
@@ -285,14 +294,14 @@ const SeatsPage = () => {
         extraFilters={
           <FilterDropdown label={p.colZone} options={zoneOptions} value={filters.zone} onChange={(v) => updateFilter("zone", v)} />
         }
-        headerActions={
+        headerActions={isAdmin ? (
           <button
             onClick={() => setGeneratingSeats(true)}
             className="flex items-center gap-1.5 rounded-xl border border-[#2C2DE0]/30 bg-[#2C2DE0]/10 px-3 py-2 text-xs font-bold text-[#2C2DE0] transition-colors hover:bg-[#2C2DE0]/20 dark:text-[#2C2DE0]"
           >
             {p.bulkGenerate}
           </button>
-        }
+        ) : null}
         serverPagination={{
           page: pagination.page,
           totalPages: pagination.totalPages,
@@ -302,7 +311,7 @@ const SeatsPage = () => {
           onRowsPerPageChange: (n) => { setLimit(n); setPage(1); },
         }}
         onExport={exportSeatsCsv}
-        onBulkDelete={(ids) => bulkMutation.mutate({ ids, action: "softDelete" })}
+        onBulkDelete={isAdmin ? (ids) => bulkMutation.mutate({ ids, action: "softDelete" }) : undefined}
         renderRowActions={(row) => (
           <div className="flex items-center gap-1.5">
             <button
@@ -319,13 +328,15 @@ const SeatsPage = () => {
               <Pencil size={11} />
               {c.edit}
             </button>
-            <button
-              onClick={() => setDeleteTarget(row)}
-              className="flex items-center gap-1 rounded-lg bg-red-500/10 px-2 py-1 text-[10px] font-bold text-red-600 hover:bg-red-500/20 transition-colors"
-            >
-              <Trash2 size={11} />
-              {c.delete}
-            </button>
+            {isAdmin && (
+              <button
+                onClick={() => setDeleteTarget(row)}
+                className="flex items-center gap-1 rounded-lg bg-red-500/10 px-2 py-1 text-[10px] font-bold text-red-600 hover:bg-red-500/20 transition-colors"
+              >
+                <Trash2 size={11} />
+                {c.delete}
+              </button>
+            )}
           </div>
         )}
       />
@@ -368,6 +379,22 @@ const SeatsPage = () => {
               disabled={Boolean(editingSeat)}
             />
             {formErrors.seatNumber && <span className={errorClass}>{formErrors.seatNumber}</span>}
+          </label>
+          <label className={labelClass}>
+            Section / location
+            <input className={inputClass} value={form.section} onChange={(e) => setForm((f) => ({ ...f, section: e.target.value }))} placeholder="Floor or section" />
+          </label>
+          <label className={labelClass}>
+            Service status
+            <select className={selectClass} value={form.status} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}>
+              <option value="available">Available</option>
+              <option value="unavailable">Unavailable</option>
+              <option value="maintenance">Under maintenance</option>
+            </select>
+          </label>
+          <label className={labelClass}>
+            Description
+            <textarea className={inputClass} value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} rows={3} />
           </label>
           <label className={labelClass}>
             {p.colZone}

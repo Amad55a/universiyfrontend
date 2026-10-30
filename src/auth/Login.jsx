@@ -3,6 +3,7 @@ import React, { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useLanguage } from "@/hooks/useLanguage";
+import { LIBRARIAN_HOME } from "@/admin/routes/adminAccess";
 import { useAuth } from "@/context/AuthContext";
 import UnicoreLogo from "@/FrontDoorSystem/components/Logo";
 import api from "@/api/client";
@@ -49,15 +50,14 @@ function GoogleAuthButton({ onClick, label, disabled = false }) {
 const LoginPage = () => {
   const { login } = useAuth();
   const { t } = useLanguage();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [formData, setFormData] = useState({ email: "", password: "" });
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadingPhase, setLoadingPhase] = useState(0);
   const [captchaToken, setCaptchaToken] = useState(null);
   const [captchaResetKey, setCaptchaResetKey] = useState(0);
-  const navigate = useNavigate();
-  const location = useLocation();
-
   // Rotate loading text
   useEffect(() => {
     if (!loading) return;
@@ -74,9 +74,14 @@ const LoginPage = () => {
 
   useEffect(() => {
     const message = location.state?.accountStatusMessage;
-    if (!message) return;
-    toast.error(message);
-    navigate("/login", { replace: true, state: null });
+    const librarianSignInMessage = location.state?.librarianSignInMessage;
+    if (!message && !librarianSignInMessage) return;
+    if (message) toast.error(message);
+    if (librarianSignInMessage) toast.info(librarianSignInMessage);
+    navigate("/login", {
+      replace: true,
+      state: null,
+    });
   }, [location.state, navigate]);
 
   const handleChange = (e) =>
@@ -105,6 +110,7 @@ const LoginPage = () => {
       login(userData);
 
       if (userData?.role === "admin") navigate("/admin/dashboard");
+      else if (userData?.role === "librarian") navigate(LIBRARIAN_HOME, { replace: true });
       else if (
         userData?.role === "student" &&
         location.state?.from?.pathname?.startsWith("/exam-session/") &&
@@ -122,7 +128,10 @@ const LoginPage = () => {
       const message = err.response?.data?.message || t("auth.loginFailed");
       toast.error(message);
 
-      if (err.response?.status === 403) {
+      if (
+        err.response?.status === 403 &&
+        err.response?.data?.message?.includes("verify your email")
+      ) {
         navigate("/verify-code", { state: { email: formData.email } });
       }
     } finally {
@@ -235,15 +244,15 @@ const LoginPage = () => {
 
                 <div className="flex flex-col gap-1.5">
                   <label className="text-[11px] font-bold uppercase tracking-widest text-gray-500 dark:text-gray-400">
-                    {t("common.email")}
+                    Email / Username
                   </label>
                   <input
-                    type="email"
+                    type="text"
                     name="email"
                     value={formData.email}
                     onChange={handleChange}
-                    placeholder={t("auth.emailPlaceholder")}
-                    autoComplete="off"
+                    placeholder="Enter your email or username"
+                    autoComplete="username"
                     autoCapitalize="none"
                     spellCheck={false}
                     className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#2C2DE0]/30 focus:border-[#2C2DE0] transition-all"

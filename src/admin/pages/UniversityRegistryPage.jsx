@@ -332,6 +332,7 @@ const UniversityStudentsPage = () => {
     { value: "all", label: c.all },
     { value: "student", label: p.roleStudent || "Student" },
     { value: "teacher", label: p.roleTeacher || "Teacher" },
+    { value: "librarian", label: "Librarian" },
   ];
 
   const claimedOptions = [
