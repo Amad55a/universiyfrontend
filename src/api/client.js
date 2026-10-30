@@ -8,6 +8,33 @@ axios.defaults.baseURL = resolveApiOrigin(normalizedBaseUrl);
 axios.defaults.withCredentials = true;
 window.API_BASE_URL = normalizedBaseUrl;
 
+const routeExamRequestThroughFrontend = (config) => {
+  if (typeof window === "undefined" || !config.url) return config;
+
+  const requestUrl = new URL(config.url, config.baseURL || window.location.origin);
+
+  if (!/^\/api\/(?:v1\/)?exams\//i.test(requestUrl.pathname)) return config;
+
+  config.url = `${requestUrl.pathname}${requestUrl.search}${requestUrl.hash}`;
+  config.baseURL = "";
+  return config;
+};
+
+const addSebLaunchHeader = (config) => {
+  routeExamRequestThroughFrontend(config);
+  const examId = String(config.url || "").match(/\/exams\/student\/([a-f\d]{24})\//i)?.[1];
+  if (examId && typeof window !== "undefined") {
+    const launchToken = window.sessionStorage.getItem(`unicores-seb-launch-token:${examId}`);
+    if (launchToken) {
+      config.headers = config.headers || {};
+      config.headers["X-UniCORE-SEB-Launch-Token"] = launchToken;
+    }
+  }
+  return config;
+};
+
+axios.interceptors.request.use(addSebLaunchHeader);
+
 const normalizeRequestUrl = (url = "", base = "") => {
   if (!url || /^https?:\/\//i.test(url) || url.startsWith("blob:") || url.startsWith("data:")) {
     return url;
@@ -64,7 +91,7 @@ api.interceptors.request.use((config) => {
     config.baseURL = "";
   }
 
-  return config;
+  return addSebLaunchHeader(config);
 });
 
 let isRefreshing = false;

@@ -19,16 +19,18 @@ export default function StudentExamDetailsPage() {
     examId: null,
     launching: false,
     launchMessage: "",
+    launchMessageType: "error",
     accessToken: "",
   });
   const formForExam = launchForm.examId === examId;
   const launching = formForExam && launchForm.launching;
   const launchMessage = formForExam ? launchForm.launchMessage : "";
+  const launchMessageType = formForExam ? launchForm.launchMessageType : "error";
   const accessToken = formForExam ? launchForm.accessToken : "";
   const updateLaunchForm = (updates) => setLaunchForm((current) => ({
     ...(current.examId === examId
       ? current
-      : { examId, launching: false, launchMessage: "", accessToken: "" }),
+      : { examId, launching: false, launchMessage: "", launchMessageType: "error", accessToken: "" }),
     ...updates,
     examId,
   }));
@@ -48,15 +50,39 @@ export default function StudentExamDetailsPage() {
 
   const canStartInBrowser = exam?.canStartInBrowser ??
     (exam?.canStart && !exam?.sebRequired && !exam?.security?.browserLock);
+  const canStartInSeb = Boolean(
+    exam?.canStart && exam?.sebRequired && !exam?.security?.browserLock,
+  );
 
   const handleStartExam = async () => {
-    if (!exam?.id || !canStartInBrowser || launching) return;
+    if (!exam?.id || (!canStartInBrowser && !canStartInSeb) || launching) return;
     if (!accessToken.trim()) {
       updateLaunchForm({ launchMessage: "Enter the exam access token provided by your instructor." });
       return;
     }
     updateLaunchForm({ launching: true, launchMessage: "" });
     try {
+      if (canStartInSeb) {
+        const { data: configFile } = await api.post(
+          `/exams/student/${exam.id}/seb-config`,
+          { token: accessToken.trim() },
+          { responseType: "blob" },
+        );
+        const downloadUrl = URL.createObjectURL(configFile);
+        const download = document.createElement("a");
+        download.href = downloadUrl;
+        download.download = `exam-${exam.id}.seb`;
+        document.body.appendChild(download);
+        download.click();
+        download.remove();
+        window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 60_000);
+        updateLaunchForm({
+          launchMessage: "Configuration downloaded. Open the .seb file with Safe Exam Browser to continue.",
+          launchMessageType: "info",
+        });
+        return;
+      }
+
       const { data: validationResponse } = await api.post(
         "/exams/student/validate-token",
         { token: accessToken.trim() },
@@ -91,10 +117,18 @@ export default function StudentExamDetailsPage() {
 
       navigate(`/exam-session/${exam.id}`, { replace: true });
     } catch (launchError) {
-      const message = launchError.response?.data?.message ||
+      let responseMessage = launchError.response?.data?.message;
+      if (!responseMessage && launchError.response?.data instanceof Blob) {
+        try {
+          responseMessage = JSON.parse(await launchError.response.data.text())?.message;
+        } catch {
+          responseMessage = "";
+        }
+      }
+      const message = responseMessage ||
         launchError.message ||
         "Could not start the exam. Check your connection and try again.";
-      updateLaunchForm({ launchMessage: message });
+      updateLaunchForm({ launchMessage: message, launchMessageType: "error" });
       toast.error(message);
     } finally {
       updateLaunchForm({ launching: false });
@@ -201,7 +235,7 @@ export default function StudentExamDetailsPage() {
           {exam.sebRequired && (
             <p className="mt-3 flex items-start gap-2 text-sm text-amber-800 dark:text-amber-300">
               <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
-              Safe Exam Browser is required for this exam; standard Chrome launch is not allowed by the exam policy.
+              Safe Exam Browser is required. Download and open the student-specific .seb configuration to start; a standard browser cannot retrieve exam questions.
             </p>
           )}
           {exam.security?.browserLock && (
@@ -229,7 +263,7 @@ export default function StudentExamDetailsPage() {
           </Link>
         )}
 
-        {canStartInBrowser && (
+        {(canStartInBrowser || canStartInSeb) && (
           <div className="mt-6 space-y-3">
             <div>
               <label htmlFor="exam-access-token" className="mb-1 block text-sm font-semibold">
@@ -241,7 +275,11 @@ export default function StudentExamDetailsPage() {
                 autoComplete="off"
                 autoCapitalize="characters"
                 value={accessToken}
-                onChange={(event) => updateLaunchForm({ accessToken: event.target.value })}
+                onChange={(event) => updateLaunchForm({
+                  accessToken: event.target.value,
+                  launchMessage: "",
+                  launchMessageType: "error",
+                })}
                 placeholder="Enter the token provided by your instructor"
                 className="w-full max-w-md rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-600 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white"
               />
@@ -254,25 +292,34 @@ export default function StudentExamDetailsPage() {
             >
               {launching && <Loader2 className="h-4 w-4 animate-spin" />}
               {launching
-                ? "Preparing exam session…"
-                : exam.attemptStatus === "in-progress"
-                  ? "Validate token and resume exam"
-                  : "Validate token and start exam"}
+                ? (canStartInSeb ? "Preparing SEB configuration…" : "Preparing exam session…")
+                : canStartInSeb
+                  ? "Download Safe Exam Browser configuration"
+                  : exam.attemptStatus === "in-progress"
+                    ? "Validate token and resume exam"
+                    : "Validate token and start exam"}
             </button>
           </div>
         )}
 
         {launchMessage && (
           <div className="mt-4" role="alert" aria-live="polite">
-            <p className="text-sm text-red-700 dark:text-red-300">{launchMessage}</p>
-            <button
-              type="button"
-              onClick={handleStartExam}
-              disabled={launching || !canStartInBrowser}
-              className="mt-2 rounded-lg border px-4 py-2 text-sm font-semibold disabled:opacity-50"
+            <p className={launchMessageType === "info"
+              ? "text-sm text-emerald-700 dark:text-emerald-300"
+              : "text-sm text-red-700 dark:text-red-300"}
             >
-              Retry launch
-            </button>
+              {launchMessage}
+            </p>
+            {launchMessageType === "error" && (
+              <button
+                type="button"
+                onClick={handleStartExam}
+                disabled={launching || (!canStartInBrowser && !canStartInSeb)}
+                className="mt-2 rounded-lg border px-4 py-2 text-sm font-semibold disabled:opacity-50"
+              >
+                {canStartInSeb ? "Download a new configuration" : "Retry launch"}
+              </button>
+            )}
           </div>
         )}
       </section>

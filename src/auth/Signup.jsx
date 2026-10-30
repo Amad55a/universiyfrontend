@@ -12,6 +12,7 @@ import { buildGoogleAuthUrl } from "@/api/baseUrl";
 import GoogleOneTap from "@/components/GoogleOneTap";
 import { Helmet } from "react-helmet-async";
 import TurnstileCaptcha from "@/components/TurnstileCaptcha";
+import { isTurnstileEnabled } from "@/config/turnstile";
 import { toast } from "sonner";
 
 // ─── Duolingo-style Google button ────────────────────────────────────────────
@@ -198,7 +199,7 @@ const SignupPage = () => {
   const submitRegister = async () => {
     setRegisterError("");
 
-    if (import.meta.env.VITE_TURNSTILE_SITE_KEY && !captchaToken) {
+    if (isTurnstileEnabled && !captchaToken) {
       toast.error("Please complete the human verification.");
       return;
     }

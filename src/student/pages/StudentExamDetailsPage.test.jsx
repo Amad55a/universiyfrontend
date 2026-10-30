@@ -138,7 +138,7 @@ describe("student browser exam launch", () => {
     expect(await screen.findByText(`Exam session ${exam.id}`)).toBeInTheDocument();
   });
 
-  it("does not offer Chrome launch for exams explicitly requiring SEB or a managed lock", async () => {
+  it("offers a student configuration for SEB exams but not a standard-browser launch", async () => {
     api.get
       .mockResolvedValueOnce({
         data: { data: { exam: { ...exam, sebRequired: true, canStartInBrowser: false } } },
@@ -156,13 +156,56 @@ describe("student browser exam launch", () => {
       });
     const { unmount } = renderDetails();
     expect(await screen.findByText(/Safe Exam Browser is required/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Download Safe Exam Browser configuration" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Validate token and start exam" })).not.toBeInTheDocument();
     unmount();
 
     renderDetails();
     expect(await screen.findByText(/managed browser lock/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Validate token and start exam" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Download Safe Exam Browser configuration" })).not.toBeInTheDocument();
     expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it("downloads the authenticated student's exam-specific SEB configuration", async () => {
+    api.get.mockResolvedValueOnce({
+      data: {
+        data: {
+          exam: {
+            ...exam,
+            sebRequired: true,
+            canStartInBrowser: false,
+          },
+        },
+      },
+    });
+    api.post.mockResolvedValueOnce({ data: new Blob(["seb-config"]) });
+    vi.stubGlobal("URL", {
+      ...URL,
+      createObjectURL: vi.fn(() => "blob:seb-config"),
+      revokeObjectURL: vi.fn(),
+    });
+    const appendChild = vi.spyOn(document.body, "appendChild");
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    renderDetails();
+
+    fireEvent.change(await screen.findByLabelText("Exam access token"), {
+      target: { value: "MIDTERM-2026" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Download Safe Exam Browser configuration" }));
+
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith(
+        `/exams/student/${exam.id}/seb-config`,
+        { token: "MIDTERM-2026" },
+        { responseType: "blob" },
+      );
+    });
+    expect(await screen.findByText(/Configuration downloaded/)).toBeInTheDocument();
+    expect(click).toHaveBeenCalledOnce();
+    appendChild.mockRestore();
+    click.mockRestore();
+    vi.unstubAllGlobals();
   });
 
   it("discloses configured camera or microphone monitoring before launch", async () => {

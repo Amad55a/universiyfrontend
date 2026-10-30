@@ -9,6 +9,7 @@ import api from "@/api/client";
 import { buildGoogleAuthUrl } from "@/api/baseUrl";
 import GoogleOneTap from "@/components/GoogleOneTap";
 import TurnstileCaptcha from "@/components/TurnstileCaptcha";
+import { isTurnstileEnabled } from "@/config/turnstile";
 
 // ─── Duolingo-style Google button ────────────────────────────────────────────
 
@@ -82,7 +83,7 @@ const LoginPage = () => {
     setFormData((p) => ({ ...p, [e.target.name]: e.target.value }));
 
   const submitLogin = async () => {
-    if (import.meta.env.VITE_TURNSTILE_SITE_KEY && !captchaToken) {
+    if (isTurnstileEnabled && !captchaToken) {
       toast.error("Please complete the human verification.");
       return;
     }
@@ -104,6 +105,16 @@ const LoginPage = () => {
       login(userData);
 
       if (userData?.role === "admin") navigate("/admin/dashboard");
+      else if (
+        userData?.role === "student" &&
+        location.state?.from?.pathname?.startsWith("/exam-session/") &&
+        new URLSearchParams(location.state.from.search || "").has("sebLaunchToken")
+      ) {
+        navigate(
+          `${location.state.from.pathname}${location.state.from.search || ""}`,
+          { replace: true },
+        );
+      }
       else navigate("/dashboard");
     } catch (err) {
       setCaptchaToken(null);
@@ -127,7 +138,7 @@ const LoginPage = () => {
       return;
     }
 
-    if (import.meta.env.VITE_TURNSTILE_SITE_KEY && !captchaToken) {
+    if (isTurnstileEnabled && !captchaToken) {
       toast.error("Please complete the human verification.");
       return;
     }

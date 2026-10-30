@@ -11,6 +11,7 @@ import { useLanguage } from "@/hooks/useLanguage";
 import UnicoreLogo from "@/FrontDoorSystem/components/Logo";
 import api from "@/api/client";
 import TurnstileCaptcha from "@/components/TurnstileCaptcha";
+import { isTurnstileEnabled } from "@/config/turnstile";
 
 const PW_CHECKS = [
   { id: "len", test: (p) => p.length >= 8 },
@@ -175,7 +176,7 @@ const ForgotPassword = () => {
     e.preventDefault();
     if (!email) { setEmailError(t("auth.fillAllFields")); return; }
 
-    if (import.meta.env.VITE_TURNSTILE_SITE_KEY && !turnstileToken) {
+    if (isTurnstileEnabled && !turnstileToken) {
       setEmailError("Please complete the human verification.");
       return;
     }

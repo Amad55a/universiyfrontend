@@ -44,7 +44,7 @@ const DEFAULT_EXAM_FORM = {
   availableUntil: "",
   timeLimit: 60,
   status: "draft",
-  security: {},
+  security: { sebRequired: false },
   questions: [],
 };
 
@@ -275,6 +275,27 @@ export default function TeacherExamsPage() {
                 Starts individually for each student when they begin the exam.
               </p>
             </div>
+            <div>
+              <label htmlFor="exam-environment" className="block text-sm font-medium mb-1">
+                Exam Environment
+              </label>
+              <select
+                id="exam-environment"
+                required
+                className="w-full border p-2 rounded-lg dark:bg-neutral-700 dark:border-neutral-600"
+                value={examForm.security?.sebRequired ? "seb" : "normal"}
+                onChange={(event) => setExamForm((current) => ({
+                  ...current,
+                  security: {
+                    ...current.security,
+                    sebRequired: event.target.value === "seb",
+                  },
+                }))}
+              >
+                <option value="normal">Chrome / Normal Browser</option>
+                <option value="seb">Safe Exam Browser (SEB)</option>
+              </select>
+            </div>
           </div>
 
           {/* Exam Availability */}
@@ -411,6 +432,12 @@ export default function TeacherExamsPage() {
               <div className="flex justify-between text-sm">
                 <span className="text-neutral-500">Time limit</span>
                 <span className="dark:text-neutral-300">{exam.timeLimit} mins</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-neutral-500">Exam environment</span>
+                <span className="dark:text-neutral-300">
+                  {exam.security?.sebRequired ? "Safe Exam Browser (SEB)" : "Chrome / Normal Browser"}
+                </span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-neutral-500">Status</span>

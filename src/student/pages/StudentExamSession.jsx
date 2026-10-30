@@ -130,6 +130,8 @@ export default function StudentExamSession() {
   const { t } = useLanguage();
 
   const [examSession, setExamSession] = useState(location.state?.examSession || null);
+  const sebLaunchToken = new URLSearchParams(location.search).get("sebLaunchToken");
+  const [sebLaunchReady, setSebLaunchReady] = useState(!sebLaunchToken);
   const [sessionLoading, setSessionLoading] = useState(!location.state?.examSession);
   const [sessionError, setSessionError] = useState("");
   const [sessionRetry, setSessionRetry] = useState(0);
@@ -154,9 +156,45 @@ export default function StudentExamSession() {
   const exam = examSession?.exam;
   const questions = exam?.questions || [];
 
+  useEffect(() => {
+    if (!sebLaunchToken || !examId) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await axios.post(
+          "/api/exams/student/seb-launch-token/redeem",
+          { token: sebLaunchToken },
+        );
+        if (String(data?.data?.examId) !== String(examId)) {
+          throw new Error("The Safe Exam Browser configuration is for a different exam.");
+        }
+        window.sessionStorage.setItem(
+          `unicores-seb-launch-token:${examId}`,
+          sebLaunchToken,
+        );
+        if (!cancelled) {
+          setSessionError("");
+          navigate(location.pathname, { replace: true });
+          setSebLaunchReady(true);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          const message = error.response?.data?.message || error.message ||
+            "The Safe Exam Browser launch could not be verified.";
+          setSessionError(message);
+          setSessionLoading(false);
+          toast.error(message);
+        }
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [examId, location.pathname, navigate, sebLaunchToken, sessionRetry]);
+
   // A session is restored by the server so a refresh never creates a new attempt.
   useEffect(() => {
-    if (examSession || !examId) return;
+    if (examSession || !examId || !sebLaunchReady) return;
     let cancelled = false;
     setSessionLoading(true);
     setSessionError("");
@@ -179,7 +217,7 @@ export default function StudentExamSession() {
       }
     })();
     return () => { cancelled = true; };
-  }, [examId, examSession, sessionRetry]);
+  }, [examId, examSession, sebLaunchReady, sessionRetry]);
 
   // ─── answers: ALL student work lives here ───────────────────────────────────
   useEffect(() => {
@@ -263,6 +301,7 @@ export default function StudentExamSession() {
         disarmSecurityRef.current();
         // Clear draft on successful submit
         localStorage.removeItem(draftKey(examId));
+        sessionStorage.removeItem(`unicores-seb-launch-token:${examId}`);
         if (document.fullscreenElement) document.exitFullscreen().catch(() => { });
         toast.success(
           isAuto
@@ -415,7 +454,11 @@ export default function StudentExamSession() {
         </p>
         <button
           type="button"
-          onClick={() => setSessionRetry((attempt) => attempt + 1)}
+          onClick={() => {
+            setSessionError("");
+            setSessionLoading(true);
+            setSessionRetry((attempt) => attempt + 1);
+          }}
           className="rounded-lg bg-[#2C2DE0] px-5 py-3 font-semibold text-white"
         >
           Retry session recovery
