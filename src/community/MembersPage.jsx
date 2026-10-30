@@ -185,9 +185,14 @@ const MembersPage = ({ groupId: propGroupId, groupName, currentUser: propCurrent
   const handleMessage = async (member) => {
     try {
       const data = await getOrCreatePrivateChat(member._id);
-      if (data.success) navigate(`/community/chat?id=${data.conversation._id}`);
-    } catch {
-      toast.error("Could not start chat");
+      if (!data?.success || !data.conversation?._id) {
+        throw new Error(data?.message || "Could not start chat");
+      }
+      navigate(`/community/chat?id=${data.conversation._id}`, {
+        state: { conversation: data.conversation },
+      });
+    } catch (error) {
+      toast.error(error.response?.data?.message || error.message || "Could not start chat");
     }
   };
 

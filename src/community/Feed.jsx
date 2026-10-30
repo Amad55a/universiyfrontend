@@ -242,7 +242,7 @@ const Feed = () => {
           <input
             value={peopleQuery}
             onChange={(event) => setPeopleQuery(event.target.value)}
-            placeholder="Search by name or department"
+            placeholder="Search by name or username"
             aria-label="Search community users"
             className="min-w-0 flex-1 bg-transparent py-2.5 text-sm text-gray-900 outline-none placeholder:text-gray-400 dark:text-white"
           />
@@ -272,10 +272,10 @@ const Feed = () => {
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-semibold text-gray-900 dark:text-white">
-                          {person.displayName ?? person.name}
+                          {person.displayName ?? person.fullName ?? person.name}
                         </span>
                         <span className="block truncate text-xs text-gray-500">
-                          {[person.role, person.department].filter(Boolean).join(" · ")}
+                          {[person.username && `@${person.username}`, person.role, person.department].filter(Boolean).join(" · ")}
                         </span>
                       </span>
                     </button>

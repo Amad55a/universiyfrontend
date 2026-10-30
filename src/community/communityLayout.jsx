@@ -17,8 +17,8 @@ const CommunityLayout = () => {
 
   const isMeetingRoom = /^\/community\/meetings\/room(?:\/|$)/i.test(location.pathname);
   const isChatPage = /^\/community\/chat\/?$/i.test(location.pathname);
-  const isCollaborationPage =
-    isChatPage || /^\/community\/(?:meetings|groups)(?:\/|$)/i.test(location.pathname);
+  const isWideCommunityPage =
+    isChatPage || /^\/community\/(?:meetings|groups|roadmaps|settings|help)(?:\/|$)/i.test(location.pathname);
 
   if (isMeetingRoom) {
     return (
@@ -30,7 +30,7 @@ const CommunityLayout = () => {
 
   return (
     <div
-      className={`flex min-h-dvh w-full min-w-0 bg-white dark:bg-black gap-0 ${isCollaborationPage ? "" : "lg:gap-10"}`}
+      className={`flex min-h-dvh w-full min-w-0 bg-white dark:bg-black gap-0 ${isWideCommunityPage ? "" : "lg:gap-10"}`}
       style={{ fontFamily: CHARTER_FONT_STACK }}
     >
       {/* Left sidebar */}
@@ -49,7 +49,7 @@ const CommunityLayout = () => {
       </div>
 
       {/* Right rail */}
-      {!isCollaborationPage && (
+      {!isWideCommunityPage && (
         <aside className="hidden lg:block w-64 shrink-0 border-l border-gray-100 dark:border-gray-900 h-screen sticky top-0 overflow-y-auto">
           <TrendingSidebar />
         </aside>

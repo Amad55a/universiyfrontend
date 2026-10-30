@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useLocation, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
   Check,
@@ -46,14 +46,19 @@ const timeLabel = (value) => value
 const Chats = () => {
   const { user } = useAuth();
   const { t } = useLanguage();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const activeId = searchParams.get("id");
-  const [conversations, setConversations] = useState([]);
+  const [conversations, setConversations] = useState(() => (
+    location.state?.conversation ? [location.state.conversation] : []
+  ));
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
   const [conversationQuery, setConversationQuery] = useState("");
   const [peopleQuery, setPeopleQuery] = useState("");
   const [people, setPeople] = useState([]);
+  const [peopleLoading, setPeopleLoading] = useState(false);
+  const [peopleError, setPeopleError] = useState("");
   const [loading, setLoading] = useState(true);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [sending, setSending] = useState(false);
@@ -67,12 +72,19 @@ const Chats = () => {
   const fileInputRef = useRef(null);
   const pendingMessageRef = useRef(null);
   const typingTimer = useRef(null);
+  const handoffConversationRef = useRef(location.state?.conversation ?? null);
   const active = conversations.find((conversation) => conversation._id === activeId);
 
   const loadConversations = useCallback(async () => {
     try {
       const data = await listConversations("private");
-      if (data.success) setConversations(data.conversations ?? []);
+      if (data.success) {
+        const loaded = data.conversations ?? [];
+        const handoff = handoffConversationRef.current;
+        setConversations(handoff && !loaded.some((conversation) => conversation._id === handoff._id)
+          ? [handoff, ...loaded]
+          : loaded);
+      }
     } catch (err) {
       toast.error(err.response?.data?.message || "Could not load conversations");
     } finally {
@@ -164,15 +176,21 @@ const Chats = () => {
     const query = peopleQuery.trim();
     if (query.length < 2) {
       setPeople([]);
+      setPeopleError("");
+      setPeopleLoading(false);
       return undefined;
     }
     let activeRequest = true;
+    setPeopleLoading(true);
+    setPeopleError("");
     const timer = window.setTimeout(async () => {
       try {
         const data = await searchChatUsers(query);
         if (activeRequest) setPeople(data.users ?? []);
       } catch (err) {
-        if (activeRequest) toast.error(err.response?.data?.message || "Could not search users");
+        if (activeRequest) setPeopleError(err.response?.data?.message || "Could not search users");
+      } finally {
+        if (activeRequest) setPeopleLoading(false);
       }
     }, 250);
     return () => {
@@ -194,6 +212,10 @@ const Chats = () => {
     try {
       const result = await getOrCreatePrivateChat(person._id);
       if (!result.success) throw new Error(result.message || "Could not start chat");
+      handoffConversationRef.current = result.conversation;
+      setConversations((current) => current.some((conversation) => conversation._id === result.conversation._id)
+        ? current.map((conversation) => conversation._id === result.conversation._id ? result.conversation : conversation)
+        : [result.conversation, ...current]);
       await loadConversations();
       selectChat(result.conversation._id);
     } catch (err) {
@@ -301,7 +323,13 @@ const Chats = () => {
   };
 
   const visibleConversations = conversations.filter((conversation) =>
-    (conversation.displayName ?? "").toLowerCase().includes(conversationQuery.trim().toLowerCase())
+    [
+      conversation.displayName,
+      conversation.otherUser?.name,
+      conversation.otherUser?.fullName,
+      conversation.otherUser?.displayName,
+      conversation.otherUser?.username,
+    ].some((value) => String(value ?? "").toLowerCase().includes(conversationQuery.trim().toLowerCase()))
   );
 
   return (
@@ -351,18 +379,23 @@ const Chats = () => {
           </div>
           {peopleQuery.trim().length >= 2 && (
             <div className="mt-2 max-h-48 overflow-y-auto">
-              {people.length ? people.map((person) => (
+              {peopleLoading ? (
+                <p className="px-2 py-2 text-xs text-gray-500">Searching people…</p>
+              ) : peopleError ? (
+                <p role="alert" className="px-2 py-2 text-xs text-red-500">{peopleError}</p>
+              ) : people.length ? people.map((person) => (
                 <button
                   key={person._id}
                   onClick={() => startChat(person)}
-                  disabled={!person.canMessage}
+                  disabled={!person.canMessage && !person.hasConversation}
                   className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-gray-900"
                 >
-                  <Avatar name={person.displayName ?? person.name} photo={person.photo} size={30} />
+                  <Avatar name={person.displayName ?? person.fullName ?? person.name} photo={person.photo} size={30} />
                   <span className="min-w-0 flex-1 truncate text-xs font-semibold text-gray-800 dark:text-gray-200">
-                    {person.displayName ?? person.name}
+                    {person.displayName ?? person.fullName ?? person.name}
                     <span className="block truncate text-[10px] font-normal text-gray-500">
-                      {person.canMessage ? person.department || person.role : "Message unavailable"}
+                      {person.username ? `@${person.username}` : person.department || person.role}
+                      {!person.canMessage && !person.hasConversation ? " · Message unavailable" : ""}
                     </span>
                   </span>
                 </button>
@@ -490,7 +523,14 @@ const Chats = () => {
               <div ref={endRef} />
             </section>
 
-            <div className="shrink-0 border-t border-gray-100 bg-white px-3 pt-2.5 dark:border-gray-800 dark:bg-gray-950 sm:px-4" style={{ paddingBottom: "max(0.65rem, env(safe-area-inset-bottom))" }}>
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                handleSend();
+              }}
+              className="sticky bottom-0 z-10 shrink-0 border-t border-gray-100 bg-white px-3 pt-2.5 dark:border-gray-800 dark:bg-gray-950 sm:px-4"
+              style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
+            >
               {selectedFile && (
                 <div className="mb-2 flex items-center gap-2 rounded-lg bg-gray-100 px-3 py-2 text-xs dark:bg-gray-900">
                   <FileText size={15} className="text-[#2C2DE0]" />
@@ -499,7 +539,7 @@ const Chats = () => {
                 </div>
               )}
               {sending && selectedFile && <div className="mb-2 h-1 overflow-hidden rounded bg-gray-100 dark:bg-gray-800"><div className="h-full bg-[#2C2DE0] transition-all" style={{ width: `${uploadProgress}%` }} /></div>}
-              <div className="flex items-end gap-1.5 sm:gap-2">
+              <div className="mx-auto flex w-full max-w-5xl items-end gap-1.5 rounded-2xl border border-gray-200 bg-gray-50 p-1.5 shadow-sm transition focus-within:border-[#2C2DE0]/60 focus-within:ring-4 focus-within:ring-[#2C2DE0]/10 dark:border-gray-700 dark:bg-gray-900 sm:gap-2 sm:p-2">
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -509,9 +549,9 @@ const Chats = () => {
                   className="hidden"
                   aria-label="Choose attachment"
                 />
-                <button type="button" onClick={() => fileInputRef.current?.click()} disabled={sending} aria-label="Attach file" className="rounded-xl p-2.5 text-gray-500 hover:bg-gray-100 disabled:opacity-40 dark:hover:bg-gray-900"><Paperclip size={18} /></button>
+                <button type="button" onClick={() => fileInputRef.current?.click()} disabled={sending} aria-label="Attach file" title="Attach an image, video, or file" className="rounded-xl p-2.5 text-gray-500 hover:bg-white disabled:opacity-40 dark:hover:bg-gray-800"><Paperclip size={19} /></button>
                 <div className="relative">
-                  <button type="button" onClick={() => setShowEmojis((value) => !value)} disabled={sending} aria-label="Choose emoji" className="rounded-xl p-2.5 text-gray-500 hover:bg-gray-100 disabled:opacity-40 dark:hover:bg-gray-900"><Smile size={18} /></button>
+                  <button type="button" onClick={() => setShowEmojis((value) => !value)} disabled={sending} aria-label="Choose emoji" className="rounded-xl p-2.5 text-gray-500 hover:bg-white disabled:opacity-40 dark:hover:bg-gray-800"><Smile size={18} /></button>
                   {showEmojis && <div className="absolute bottom-12 left-0 z-10 grid w-48 grid-cols-6 gap-1 rounded-xl border border-gray-200 bg-white p-2 shadow-xl dark:border-gray-700 dark:bg-gray-900">{EMOJIS.map((emoji) => <button key={emoji} onClick={() => addEmoji(emoji)} className="rounded p-1.5 text-lg hover:bg-gray-100 dark:hover:bg-gray-800">{emoji}</button>)}</div>}
                 </div>
                 <textarea
@@ -528,19 +568,20 @@ const Chats = () => {
                   placeholder={t["chat.placeholder"] ?? "Type a message…"}
                   aria-label="Message"
                   rows={1}
-                  className="max-h-28 min-h-10 min-w-0 flex-1 resize-y rounded-xl bg-gray-100 px-3 py-2.5 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-[#2C2DE0]/30 dark:bg-gray-900 dark:text-white"
+                  className="max-h-32 min-h-11 min-w-0 flex-1 resize-none rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm leading-5 text-gray-900 outline-none placeholder:text-gray-400 focus:border-[#2C2DE0]/60 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
                 />
                 <button
-                  onClick={handleSend}
+                  type="submit"
                   disabled={(!text.trim() && !selectedFile) || sending}
                   aria-label="Send message"
-                  className="rounded-xl bg-[#2C2DE0] p-2.5 text-white shadow-[0_3px_0_#1E1FAA] transition hover:translate-y-0.5 hover:shadow-[0_1px_0_#1E1FAA] disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-[#2C2DE0] px-3 text-white shadow-[0_3px_0_#1E1FAA] transition hover:translate-y-0.5 hover:shadow-[0_1px_0_#1E1FAA] disabled:cursor-not-allowed disabled:opacity-50 sm:px-4"
                 >
                   <Send size={18} />
+                  <span className="hidden text-sm font-bold sm:inline">Send</span>
                 </button>
               </div>
               <p className="mt-1.5 px-1 text-[10px] text-gray-400">Enter to send · Shift+Enter for a new line · Files up to 25 MB</p>
-            </div>
+            </form>
           </>
         )}
       </main>

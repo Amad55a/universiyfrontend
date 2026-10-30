@@ -45,6 +45,7 @@ const UserProfile = () => {
   const [photoFile, setPhotoFile] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [startingChat, setStartingChat] = useState(false);
 
   const isSelf = currentUser && (String(id) === String(currentUser._id) || String(id) === String(currentUser.id));
 
@@ -104,11 +105,20 @@ const UserProfile = () => {
   };
 
   const handleSendMessage = async () => {
+    if (startingChat) return;
+    setStartingChat(true);
     try {
       const data = await getOrCreatePrivateChat(id);
-      if (data.success) navigate(`/community/chat?id=${data.conversation._id}`);
-    } catch {
-      toast.error("Could not start chat");
+      if (!data?.success || !data.conversation?._id) {
+        throw new Error(data?.message || "Could not start chat");
+      }
+      navigate(`/community/chat?id=${data.conversation._id}`, {
+        state: { conversation: data.conversation },
+      });
+    } catch (error) {
+      toast.error(error.response?.data?.message || error.message || "Could not start chat");
+    } finally {
+      setStartingChat(false);
     }
   };
 
@@ -227,9 +237,11 @@ const UserProfile = () => {
           ) : (
             <button
               onClick={handleSendMessage}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#2C2DE0] text-white text-sm font-bold"
+              disabled={startingChat}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#2C2DE0] text-white text-sm font-bold disabled:cursor-wait disabled:opacity-60"
             >
-              <MessageCircle size={16} /> Send message
+              {startingChat ? <Loader2 size={16} className="animate-spin" /> : <MessageCircle size={16} />}
+              {startingChat ? "Opening chat…" : "Send message"}
             </button>
           )}
         </div>

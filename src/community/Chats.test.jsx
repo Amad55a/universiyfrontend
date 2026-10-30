@@ -7,6 +7,8 @@ const mocks = vi.hoisted(() => ({
   listConversations: vi.fn(),
   getMessages: vi.fn(),
   sendMessage: vi.fn(),
+  searchChatUsers: vi.fn(),
+  getOrCreatePrivateChat: vi.fn(),
   markConversationRead: vi.fn(),
   callbacks: {},
 }));
@@ -21,8 +23,8 @@ vi.mock("@/api/chatApi", () => ({
   sendMessage: mocks.sendMessage,
   markConversationRead: mocks.markConversationRead,
   joinChatRoom: vi.fn(() => vi.fn()),
-  getOrCreatePrivateChat: vi.fn(),
-  searchChatUsers: vi.fn().mockResolvedValue({ users: [] }),
+  getOrCreatePrivateChat: mocks.getOrCreatePrivateChat,
+  searchChatUsers: mocks.searchChatUsers,
   uploadChatAttachment: vi.fn(),
   deleteChatMessage: vi.fn(),
   chatAttachmentUrl: vi.fn(() => "/attachment"),
@@ -81,6 +83,7 @@ describe("private chat interface", () => {
     mocks.listConversations.mockResolvedValue({ success: true, conversations: [conversation] });
     mocks.getMessages.mockResolvedValue({ success: true, messages: [] });
     mocks.markConversationRead.mockResolvedValue({ success: true, messageIds: [] });
+    mocks.searchChatUsers.mockResolvedValue({ users: [] });
     mocks.sendMessage.mockResolvedValue({
       success: true,
       message: { _id: "message-1", text: "Hello", sender: { _id: "user-1" }, createdAt: new Date().toISOString(), readBy: ["user-1"] },
@@ -108,5 +111,56 @@ describe("private chat interface", () => {
       expect.any(String)
     ));
     expect(await screen.findByText("Hello")).toBeInTheDocument();
+  });
+
+  it("searches existing conversations by the other user's full name", async () => {
+    mocks.listConversations.mockResolvedValue({
+      success: true,
+      conversations: [{
+        ...conversation,
+        otherUser: { ...conversation.otherUser, fullName: "Kai Andersson" },
+      }],
+    });
+    renderChats();
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Search conversations" }), {
+      target: { value: "Andersson" },
+    });
+
+    expect(await screen.findByRole("button", { name: /Kai/ })).toBeInTheDocument();
+  });
+
+  it("opens a private chat selected from current people search results", async () => {
+    const newConversation = {
+      _id: "conversation-2",
+      displayName: "Nora Smith",
+      displayPhoto: null,
+      otherUser: { _id: "user-3", fullName: "Nora Smith" },
+    };
+    mocks.searchChatUsers.mockResolvedValue({
+      users: [{
+        _id: "user-3",
+        name: "Nora Smith",
+        username: "nora",
+        photo: "nora.png",
+        canMessage: true,
+      }],
+    });
+    mocks.getOrCreatePrivateChat.mockResolvedValue({
+      success: true,
+      conversation: newConversation,
+    });
+    renderChats();
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Search people to message" }), {
+      target: { value: "Nora" },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: /Nora Smith/ }));
+
+    await waitFor(() => {
+      expect(mocks.getOrCreatePrivateChat).toHaveBeenCalledWith("user-3");
+      expect(mocks.getMessages).toHaveBeenCalledWith("conversation-2");
+    });
+    expect(await screen.findAllByText("Nora Smith")).not.toHaveLength(0);
   });
 });

@@ -35,6 +35,9 @@ describe("community layout trending rail", () => {
     "/community/groups",
     "/community/groups/group-1",
     "/community/chat",
+    "/community/roadmaps",
+    "/community/settings",
+    "/community/help",
   ])("removes the trending rail and lets the content column expand on %s", (path) => {
     const { container } = renderAtPath(path);
     const layout = container.firstElementChild;

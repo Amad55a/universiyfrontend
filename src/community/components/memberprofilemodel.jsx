@@ -37,6 +37,7 @@ const MemberProfileModal = ({ member, groupId, open, onClose, currentUserId }) =
   const navigate = useNavigate();
   const [profile, setProfile] = useState(member);
   const [loading, setLoading] = useState(false);
+  const [startingChat, setStartingChat] = useState(false);
 
   useEffect(() => {
     setProfile(member);
@@ -55,16 +56,21 @@ const MemberProfileModal = ({ member, groupId, open, onClose, currentUserId }) =
   const statusColor = display.status === "online" ? "bg-[#2C2DE0]" : display.status === "away" ? "bg-yellow-400" : "bg-gray-300";
 
   const handleSendMessage = async () => {
+    if (startingChat) return;
+    setStartingChat(true);
     try {
       const data = await getOrCreatePrivateChat(display._id);
-      if (data.success) {
-        onClose();
-        navigate(`/community/chat?id=${data.conversation._id}`);
+      if (!data?.success || !data.conversation?._id) {
+        throw new Error(data?.message || "Could not start chat");
       }
-    } catch {
-      toast.error("Could not start chat");
       onClose();
-      navigate("/community/chat");
+      navigate(`/community/chat?id=${data.conversation._id}`, {
+        state: { conversation: data.conversation },
+      });
+    } catch (error) {
+      toast.error(error.response?.data?.message || error.message || "Could not start chat");
+    } finally {
+      setStartingChat(false);
     }
   };
 
@@ -141,10 +147,11 @@ const MemberProfileModal = ({ member, groupId, open, onClose, currentUserId }) =
           <div className="px-4 pb-5 pt-2 flex gap-2">
             <button
               onClick={handleSendMessage}
-              className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm bg-[#2C2DE0] text-white font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150"
+              disabled={startingChat}
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm bg-[#2C2DE0] text-white font-bold shadow-[0_4px_0_#1E1FAA] hover:translate-y-0.5 hover:shadow-[0_2px_0_#1E1FAA] active:translate-y-1 active:shadow-none transition-all duration-150 disabled:cursor-wait disabled:opacity-60"
             >
-              <MessageCircle size={16} />
-              Send message
+              {startingChat ? <Loader2 size={16} className="animate-spin" /> : <MessageCircle size={16} />}
+              {startingChat ? "Opening chat…" : "Send message"}
             </button>
           </div>
         )}
