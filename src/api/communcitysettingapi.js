@@ -9,6 +9,7 @@ export const updateProfile = ({
   skills, 
   photoFile, 
   displayName, 
+  username,
   name, 
   phone, 
   department, 
@@ -18,6 +19,7 @@ export const updateProfile = ({
   if (bio !== undefined) fd.append("bio", bio);
   if (skills !== undefined) fd.append("skills", JSON.stringify(skills));
   if (displayName !== undefined) fd.append("displayName", displayName);
+  if (username !== undefined) fd.append("username", username);
   if (name !== undefined) fd.append("name", name);
   if (phone !== undefined) fd.append("phone", phone);
   if (department !== undefined) fd.append("department", department);

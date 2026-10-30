@@ -100,6 +100,12 @@ describe("private chat interface", () => {
     renderChats();
     fireEvent.click(await screen.findByRole("button", { name: /Kai/ }));
     const composer = await screen.findByRole("textbox", { name: "Message" });
+    const composerForm = composer.closest("form");
+    const sendButton = screen.getByRole("button", { name: "Send message" });
+    expect(composerForm).toHaveClass("sticky", "bottom-0");
+    expect(screen.getByRole("button", { name: "Attach file" })).toBeInTheDocument();
+    expect(sendButton).toHaveClass("sm:px-4");
+    expect(sendButton.querySelector("span")).toHaveClass("hidden", "sm:inline");
     fireEvent.change(composer, { target: { value: "Hello" } });
     fireEvent.keyDown(composer, { key: "Enter", shiftKey: true });
     expect(mocks.sendMessage).not.toHaveBeenCalled();
@@ -162,5 +168,35 @@ describe("private chat interface", () => {
       expect(mocks.getMessages).toHaveBeenCalledWith("conversation-2");
     });
     expect(await screen.findAllByText("Nora Smith")).not.toHaveLength(0);
+  });
+
+  it("opens a profile handoff immediately before the conversation list finishes loading", async () => {
+    const profileConversation = {
+      _id: "conversation-profile",
+      displayName: "Riley",
+      displayPhoto: null,
+      otherUser: { _id: "user-4", name: "Riley" },
+    };
+    let resolveConversationList;
+    mocks.listConversations.mockReturnValue(new Promise((resolve) => {
+      resolveConversationList = resolve;
+    }));
+
+    render(
+      <MemoryRouter initialEntries={[{
+        pathname: "/community/chat",
+        search: "?id=conversation-profile",
+        state: { conversation: profileConversation },
+      }]}>
+        <Routes>
+          <Route path="/community/chat" element={<Chats />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect(await screen.findAllByText("Riley")).not.toHaveLength(0);
+    await waitFor(() => expect(mocks.getMessages).toHaveBeenCalledWith("conversation-profile"));
+    resolveConversationList({ success: true, conversations: [] });
+    await waitFor(() => expect(screen.queryAllByText("Riley")).not.toHaveLength(0));
   });
 });

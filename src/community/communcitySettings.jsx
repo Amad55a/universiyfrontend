@@ -125,6 +125,7 @@ const ProfileSection = ({ user, setUser, isSo }) => {
   const [previewPhoto, setPreviewPhoto] = useState(null);
   const [photoFile, setPhotoFile] = useState(null);
   const [displayName, setDisplayName] = useState(user?.displayName || user?.name || "");
+  const [username, setUsername] = useState(user?.username || "");
   const [bio, setBio] = useState(user?.bio || "");
   const [skills, setSkills] = useState(user?.skills || []);
   const [skillInput, setSkillInput] = useState("");
@@ -134,6 +135,7 @@ const ProfileSection = ({ user, setUser, isSo }) => {
   useEffect(() => {
     if (user) {
       setDisplayName(user.displayName || user.name || "");
+      setUsername(user.username || "");
       setBio(user.bio || "");
       setSkills(Array.isArray(user.skills) ? user.skills : []);
     }
@@ -161,7 +163,13 @@ const ProfileSection = ({ user, setUser, isSo }) => {
     setSaving(true);
     setStatus({ type: null, msg: null });
     try {
-      const data = await updateProfile({ displayName: displayName.trim(), bio, skills, photoFile });
+      const data = await updateProfile({
+        displayName: displayName.trim(),
+        username: username.trim(),
+        bio,
+        skills,
+        photoFile,
+      });
       if (setUser && data.user) setUser(data.user);
       setPhotoFile(null);
       setPreviewPhoto(null);
@@ -233,6 +241,26 @@ const ProfileSection = ({ user, setUser, isSo }) => {
           />
           <p className="text-[10px] text-gray-400">
             {isSo ? "Waxay ka duwan tahay magacaad ee jaamacadda ee la xaqiijiyay." : "Separate from your verified university name shown above."}
+          </p>
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">
+            {isSo ? "Magaca isticmaale" : "Username"}
+          </label>
+          <input
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            maxLength={41}
+            autoCapitalize="none"
+            autoComplete="username"
+            placeholder="@ahmedali"
+            className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-[#2C2DE0]/40 focus:border-[#2C2DE0] dark:focus:border-[#2C2DE0] transition-all py-3 px-3.5"
+          />
+          <p className="text-[10px] text-gray-400">
+            {isSo
+              ? "2–40 xaraf, tiro, dhibco, ama xariiq-hoose; waa inuu gaar kuu yahay."
+              : "2–40 letters, numbers, periods, or underscores. Must be unique."}
           </p>
         </div>
 

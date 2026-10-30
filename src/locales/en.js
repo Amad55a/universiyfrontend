@@ -705,6 +705,8 @@ const en = {
     createAccountTitle: "Create your account",
     signupSubtitle: "Completely free for all officially enrolled UNISO students.",
     namePlaceholder: "Ahmed Ali",
+    usernameLabel: "Username (optional)",
+    usernameHint: "2–40 letters, numbers, periods, or underscores. You can also add one later in Settings.",
     passwordMinPlaceholder: "At least 8 characters",
     creatingAccount: "Creating account...",
     createAccountButton: "Create Account",

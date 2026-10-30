@@ -137,14 +137,14 @@ const SignupPage = () => {
   const [step, setStep] = useState("register");
   const [loadingPhase, setLoadingPhase] = useState(0);
 
-  const [registerData, setRegisterData] = useState({ name: "", email: "", password: "" });
+  const [registerData, setRegisterData] = useState({ name: "", username: "", email: "", password: "" });
   const [showPassword, setShowPassword] = useState(false);
   const [registerError, setRegisterError] = useState("");
   const [savedEmail, setSavedEmail] = useState("");
 
   // Clear form on mount / back-nav
   useEffect(() => {
-    const clear = () => setRegisterData({ name: "", email: "", password: "" });
+    const clear = () => setRegisterData({ name: "", username: "", email: "", password: "" });
     clear();
     window.addEventListener("pageshow", clear);
     return () => window.removeEventListener("pageshow", clear);
@@ -389,6 +389,26 @@ const SignupPage = () => {
                     autoComplete="off"
                     className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#2C2DE0]/30 focus:border-[#2C2DE0] transition-all"
                   />
+                </div>
+
+                {/* Optional public username */}
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[11px] font-bold uppercase tracking-widest text-gray-500 dark:text-gray-400">
+                    {t("auth.usernameLabel")}
+                  </label>
+                  <input
+                    type="text"
+                    name="username"
+                    value={registerData.username}
+                    onChange={handleRegisterChange}
+                    placeholder="@ahmedali"
+                    maxLength={41}
+                    autoComplete="username"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#2C2DE0]/30 focus:border-[#2C2DE0] transition-all"
+                  />
+                  <p className="text-[10px] text-gray-400">{t("auth.usernameHint")}</p>
                 </div>
 
                 {/* Email */}

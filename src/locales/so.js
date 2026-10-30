@@ -694,6 +694,8 @@ const so = {
     createAccountTitle: "Samayso akoon cusub",
     signupSubtitle: "Kujir buuxinta xogtaada si aad akoon u samaysato.",
     namePlaceholder: "Magacaaga Buuxa",
+    usernameLabel: "Magaca isticmaale (ikhtiyaari)",
+    usernameHint: "2–40 xaraf, tiro, dhibco, ama xariiq-hoose. Waxaad sidoo kale ka dari kartaa Dejinta.",
     passwordMinPlaceholder: "Ugu yaraan 8 xaraf/nambar",
     creatingAccount: "Akoonka waa la samaynayaa...",
     createAccountButton: "Samayso Akoon",
