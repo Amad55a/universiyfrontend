@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import axios from "axios";
+import api from "@/api/client";
 import { toast } from "sonner";
 import { Sparkles, Loader2, BookOpen, AlertCircle, RefreshCw } from "lucide-react";
 
@@ -9,7 +9,7 @@ export default function AiFeedbackTab({ submission, examId, subId, onRefresh }) 
   const triggerFeedback = async () => {
     try {
       setGenerating(true);
-      await axios.post(
+      await api.post(
         `/api/exams/teacher/${examId}/submissions/${subId}/ai-feedback`
       );
       toast.success("AI feedback generated successfully!");

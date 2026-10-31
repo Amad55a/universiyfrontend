@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import axios from "axios";
+import api from "@/api/client";
 import { toast } from "sonner";
 import DesignSnapshotPreview from "../../../components/DesignSnapshotPreview";
 import SubmittedCodeFiles from "../../../components/SubmittedCodeFiles";
@@ -57,7 +57,7 @@ export default function QuestionsTab({ submission, grades, onUpdateGrade, examId
   const requestAi = async (questionId) => {
     try {
       setAiLoading(questionId);
-      const { data } = await axios.post(
+      const { data } = await api.post(
         `/api/exams/teacher/${examId}/submissions/${submission._id}/ai-assist`,
         { questionId }
       );

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import axios from "axios";
+import api from "@/api/client";
 import { toast } from "sonner";
 import { X, Search, Loader2, CheckCircle2, Circle, BookOpen, ChevronLeft, ChevronRight } from "lucide-react";
 import { mapBankQuestionsToExamQuestions } from "../../utils/examQuestionMapping";
@@ -35,7 +35,7 @@ export default function QuestionBankPicker({ onClose, onAddQuestions, alreadyAdd
   const fetchQuestions = async () => {
     try {
       setLoading(true);
-      const { data } = await axios.get("/api/question-bank", {
+      const { data } = await api.get("/api/question-bank", {
         params: { page, limit: 10, search, type: typeFilter, difficulty: diffFilter },
       });
       setQuestions(data.data.questions || []);
@@ -71,7 +71,7 @@ export default function QuestionBankPicker({ onClose, onAddQuestions, alreadyAdd
 
     // Best-effort usage tracking — never blocks the exam-builder flow.
     try {
-      await axios.post("/api/question-bank/mark-used", { ids: selected.map(q => q._id) });
+      await api.post("/api/question-bank/mark-used", { ids: selected.map(q => q._id) });
     } catch {
       /* non-fatal */
     }

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from "react";
-import axios from "axios";
+import api from "@/api/client";
 import { toast } from "sonner";
 import { useSearchParams, Link } from "react-router-dom";
 import { Camera, CameraOff, Mic, MicOff, RefreshCw, ShieldAlert, Users } from "lucide-react";
@@ -17,7 +17,7 @@ export default function TeacherExamLiveMonitor() {
   const load = useCallback(async () => {
     if (!examId) return;
     try {
-      const { data: res } = await axios.get(`/api/exams/teacher/${examId}/live`);
+      const { data: res } = await api.get(`/api/exams/teacher/${examId}/live`);
       setData(res.data);
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to load live monitor");

@@ -1,12 +1,12 @@
 import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import axios from "axios";
+import api from "@/api/client";
 import LinuxLab from "./LinuxLab";
 
 const terminalMock = vi.hoisted(() => ({ instances: [] }));
 
-vi.mock("axios", () => ({ default: { post: vi.fn() } }));
+vi.mock("@/api/client", () => ({ default: { post: vi.fn() } }));
 vi.mock("@xterm/xterm", () => ({
   Terminal: class {
     constructor() {
@@ -44,7 +44,7 @@ describe("Linux exam terminal", () => {
   });
 
   it("sends typed commands to the session and renders the real command output", async () => {
-    axios.post
+    api.post
       .mockResolvedValueOnce(startedSession)
       .mockResolvedValueOnce({
         data: {
@@ -72,7 +72,7 @@ describe("Linux exam terminal", () => {
       await terminalMock.instances[0].onDataCallback(char);
     }
 
-    await waitFor(() => expect(axios.post).toHaveBeenLastCalledWith(
+    await waitFor(() => expect(api.post).toHaveBeenLastCalledWith(
       "/api/labs/terminal/exec",
       { sessionId: "session-1", command: "pwd" },
     ));
@@ -80,7 +80,7 @@ describe("Linux exam terminal", () => {
   });
 
   it("shows an unavailable sandbox error without fabricating a connected session", async () => {
-    axios.post.mockRejectedValueOnce({
+    api.post.mockRejectedValueOnce({
       response: { data: { message: "Terminal service is unavailable." } },
     });
 
@@ -93,7 +93,7 @@ describe("Linux exam terminal", () => {
   });
 
   it("reconnects to a live session instead of starting a duplicate container", async () => {
-    axios.post.mockResolvedValueOnce({
+    api.post.mockResolvedValueOnce({
       data: { data: { output: "__ping_ok__\n" } },
     });
     const onSessionReady = vi.fn();
@@ -108,8 +108,8 @@ describe("Linux exam terminal", () => {
     );
 
     await screen.findByText("● Connected");
-    expect(axios.post).toHaveBeenCalledOnce();
-    expect(axios.post).toHaveBeenCalledWith("/api/labs/terminal/exec", {
+    expect(api.post).toHaveBeenCalledOnce();
+    expect(api.post).toHaveBeenCalledWith("/api/labs/terminal/exec", {
       sessionId: "session-1",
       command: "echo __ping_ok__",
     });

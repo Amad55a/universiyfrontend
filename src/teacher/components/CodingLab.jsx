@@ -19,7 +19,7 @@
 // npm install @monaco-editor/react monaco-editor @xterm/xterm @xterm/addon-fit axios
 
 import React, { useState, useRef, useCallback, useEffect } from "react";
-import axios from "axios";
+import api from "@/api/client";
 import MonacoCodeEditor from "./monocoEditor";
 
 // ─── RESIZABLE BOTTOM PANEL ──────────────────────────────────────────────────
@@ -346,7 +346,7 @@ function ExecutionPanel({ code, langId, questionId, examId, sqlSchema, questionD
       const endpoint = examId
         ? `/api/exams/student/${examId}/questions/${questionId}/run`
         : "/api/labs/code/run";
-      const res = await axios.post(endpoint, payload);
+      const res = await api.post(endpoint, payload);
       const responseData = res.data?.data;
       if (!responseData || typeof responseData !== "object") {
         throw new Error("The execution service returned an invalid response.");

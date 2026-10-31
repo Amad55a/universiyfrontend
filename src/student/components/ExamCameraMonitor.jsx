@@ -4,7 +4,7 @@
  * Does NOT run ML face detection; missing camera is flagged for the lecturer.
  */
 import React, { useEffect, useRef, useState } from "react";
-import axios from "axios";
+import api from "@/api/client";
 import { Camera, CameraOff, Mic, MicOff } from "lucide-react";
 
 export default function ExamCameraMonitor({
@@ -34,7 +34,7 @@ export default function ExamCameraMonitor({
       if (snapshot) body.snapshot = snapshot;
       if (note) body.note = note;
       try {
-        await axios.post(`/api/exams/student/${examId}/proctor-heartbeat`, body);
+        await api.post(`/api/exams/student/${examId}/proctor-heartbeat`, body);
         if (
           !cancelled &&
           (!required || cameraOkRef.current) &&

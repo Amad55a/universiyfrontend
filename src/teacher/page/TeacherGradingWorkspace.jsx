@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
-import axios from "axios";
+import api from "@/api/client";
 import { toast } from "sonner";
 import {
   ArrowLeft, CheckCircle2, AlertCircle, Save, Loader2, Shield, Award
@@ -28,7 +28,7 @@ export default function TeacherGradingWorkspace() {
   const fetchSubmission = useCallback(async () => {
     try {
       setLoading(true);
-      const { data } = await axios.get(
+      const { data } = await api.get(
         `/api/exams/teacher/${fromExamId}/submissions/${subId}`
       );
       const sub = data.data.submission;
@@ -75,7 +75,7 @@ export default function TeacherGradingWorkspace() {
         teacherFeedback: g.teacherFeedback,
         privateNotes: g.privateNotes,
       }));
-      await axios.put(`/api/exams/teacher/${fromExamId}/submissions/${subId}/grade`, {
+      await api.put(`/api/exams/teacher/${fromExamId}/submissions/${subId}/grade`, {
         answers,
         finalize: false,
       });
@@ -98,7 +98,7 @@ export default function TeacherGradingWorkspace() {
         teacherFeedback: g.teacherFeedback,
         privateNotes: g.privateNotes,
       }));
-      await axios.put(`/api/exams/teacher/${fromExamId}/submissions/${subId}/grade`, {
+      await api.put(`/api/exams/teacher/${fromExamId}/submissions/${subId}/grade`, {
         answers,
         finalize: true,
       });
@@ -115,7 +115,7 @@ export default function TeacherGradingWorkspace() {
   const publishResult = async () => {
     try {
       setPublishing(true);
-      await axios.put(`/api/exams/teacher/${fromExamId}/submissions/${subId}/publish`);
+      await api.put(`/api/exams/teacher/${fromExamId}/submissions/${subId}/publish`);
       toast.success("Result published to student!");
       fetchSubmission();
     } catch (err) {

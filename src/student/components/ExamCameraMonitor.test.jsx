@@ -1,10 +1,10 @@
 import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import axios from "axios";
+import api from "@/api/client";
 import ExamCameraMonitor from "./ExamCameraMonitor";
 
-vi.mock("axios", () => ({ default: { post: vi.fn() } }));
+vi.mock("@/api/client", () => ({ default: { post: vi.fn() } }));
 
 describe("configured exam microphone checks", () => {
   let originalMediaDevices;
@@ -36,7 +36,7 @@ describe("configured exam microphone checks", () => {
     expect(getUserMedia).toHaveBeenCalledWith({ audio: true, video: false });
     expect(stop).toHaveBeenCalledOnce();
     await waitFor(() => {
-      expect(axios.post).toHaveBeenCalledWith(
+      expect(api.post).toHaveBeenCalledWith(
         "/api/exams/student/exam-1/proctor-heartbeat",
         { microphoneOk: true },
       );
@@ -55,7 +55,7 @@ describe("configured exam microphone checks", () => {
     expect(await screen.findByText("Microphone required")).toBeInTheDocument();
     expect(await screen.findByText("Permission denied")).toBeInTheDocument();
     await waitFor(() => {
-      expect(axios.post).toHaveBeenCalledWith(
+      expect(api.post).toHaveBeenCalledWith(
         "/api/exams/student/exam-1/proctor-heartbeat",
         { microphoneOk: false, note: "microphone_denied" },
       );

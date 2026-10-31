@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import axios from "axios";
+import api from "@/api/client";
 import { toast } from "sonner";
 
 export default function AIGeneratePanel({ onQuestionsGenerated }) {
@@ -17,7 +17,7 @@ export default function AIGeneratePanel({ onQuestionsGenerated }) {
       // VITE_GEMINI_API_KEY — that ships the key inside the JS bundle, where
       // anyone can read it from devtools' network/source tab. The key now
       // lives only in the backend's environment.
-      const { data } = await axios.post("/api/exams/teacher/generate-ai", { topic, mcqCount: 3, trueFalseCount: 1 });
+      const { data } = await api.post("/api/exams/teacher/generate-ai", { topic, mcqCount: 3, trueFalseCount: 1 });
       const formatted = data.data.questions.map(q => ({
         ...q,
         id: Date.now().toString() + Math.random().toString(36).slice(2, 9),

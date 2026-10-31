@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import axios from "axios";
+import api from "@/api/client";
 import { toast } from "sonner";
 import {
   BarChart2,
@@ -16,7 +16,7 @@ export default function TeacherExamAnalyticsPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    axios
+    api
       .get("/api/exams/teacher/analytics")
       .then(res => setData(res.data.data))
       .catch(() => toast.error("Failed to load analytics"))

@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
-import axios from "axios";
+import api from "@/api/client";
 import "@xterm/xterm/css/xterm.css";
 
 // ─── Task progress panel ─────────────────────────────────────────────────────
@@ -148,7 +148,7 @@ export default function LinuxLab({ question, examId: examIdProp, onScoreUpdate, 
         // we don't silently use a dead session.
         if (initialSessionId) {
           try {
-            const pingRes = await axios.post("/api/labs/terminal/exec", {
+            const pingRes = await api.post("/api/labs/terminal/exec", {
               sessionId: initialSessionId,
               command: "echo __ping_ok__",
             });
@@ -167,7 +167,7 @@ export default function LinuxLab({ question, examId: examIdProp, onScoreUpdate, 
           }
         }
 
-        const { data } = await axios.post("/api/labs/terminal/start", {
+        const { data } = await api.post("/api/labs/terminal/start", {
           examId,
           questionId,
         });
@@ -179,7 +179,7 @@ export default function LinuxLab({ question, examId: examIdProp, onScoreUpdate, 
 
         if (question?.setupScript?.trim()) {
           term.writeln("\x1b[33m[Setup] Running environment setup…\x1b[0m");
-          const setupRes = await axios.post("/api/labs/terminal/exec", {
+          const setupRes = await api.post("/api/labs/terminal/exec", {
             sessionId: sessionIdRef.current,
             command: question.setupScript,
           });
@@ -226,7 +226,7 @@ export default function LinuxLab({ question, examId: examIdProp, onScoreUpdate, 
           if (cmd === "exit") { term.writeln("exit"); return; }
 
           try {
-            const { data } = await axios.post("/api/labs/terminal/exec", {
+            const { data } = await api.post("/api/labs/terminal/exec", {
               sessionId: sessionIdRef.current,
               command: cmd,
             });
@@ -287,7 +287,7 @@ export default function LinuxLab({ question, examId: examIdProp, onScoreUpdate, 
     setValidating(true);
 
     try {
-      const { data } = await axios.post("/api/labs/terminal/validate", {
+      const { data } = await api.post("/api/labs/terminal/validate", {
         sessionId: sessionIdRef.current,
         questionId,
       });

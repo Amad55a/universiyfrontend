@@ -3,7 +3,6 @@
 // question editors. Uploads to /api/exams/teacher/upload-image and stores
 // the returned URL on the question (question.image).
 import React, { useState } from "react";
-import axios from "axios";
 import { toast } from "sonner";
 import { Upload, X, Image as ImageIcon } from "lucide-react";
 

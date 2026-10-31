@@ -1,10 +1,10 @@
 import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import axios from "axios";
+import api from "@/api/client";
 import { StudentCodingLab } from "./CodingLab";
 
-vi.mock("axios", () => ({ default: { post: vi.fn() } }));
+vi.mock("@/api/client", () => ({ default: { post: vi.fn() } }));
 vi.mock("./monocoEditor", () => ({
   default: ({ value, onChange }) => (
     <textarea
@@ -28,7 +28,7 @@ describe("exam coding lab", () => {
   });
 
   it("runs the latest editor source and stdin through the exam-scoped runner", async () => {
-    axios.post.mockResolvedValueOnce({
+    api.post.mockResolvedValueOnce({
       data: {
         data: {
           ok: true,
@@ -53,7 +53,7 @@ describe("exam coding lab", () => {
     fireEvent.click(screen.getByRole("button", { name: /Run Code/ }));
 
     await waitFor(() => {
-      expect(axios.post).toHaveBeenCalledWith(
+      expect(api.post).toHaveBeenCalledWith(
         "/api/exams/student/exam-1/questions/question-1/run",
         {
           language: "python",
@@ -134,7 +134,7 @@ describe("exam coding lab", () => {
   });
 
   it("shows stderr and timeout information without claiming success", async () => {
-    axios.post.mockResolvedValueOnce({
+    api.post.mockResolvedValueOnce({
       data: {
         data: {
           ok: false,
@@ -157,7 +157,7 @@ describe("exam coding lab", () => {
 
   it("renders Azure stdout and stderr separately and clears stale output while running", async () => {
     let finishRun;
-    axios.post.mockImplementationOnce(() => new Promise((resolve) => {
+    api.post.mockImplementationOnce(() => new Promise((resolve) => {
       finishRun = resolve;
     }));
     render(<StudentCodingLab examId="exam-1" question={question} />);
@@ -186,7 +186,7 @@ describe("exam coding lab", () => {
   });
 
   it("reports unavailable execution services instead of showing fake output", async () => {
-    axios.post.mockRejectedValueOnce({
+    api.post.mockRejectedValueOnce({
       response: { data: { message: "Code execution service is unavailable." } },
     });
     render(<StudentCodingLab examId="exam-1" question={question} />);

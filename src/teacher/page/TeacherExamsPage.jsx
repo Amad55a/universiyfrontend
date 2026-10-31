@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import axios from "axios";
+import api from "@/api/client";
 import { toast } from "sonner";
 import { Plus, X, BookOpen, Sparkles } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -60,7 +60,7 @@ export default function TeacherExamsPage() {
 
   const fetchExams = async () => {
     try {
-      const { data } = await axios.get("/api/exams/teacher");
+      const { data } = await api.get("/api/exams/teacher");
       setExams(data.data.exams);
     } catch {
       toast.error("Failed to load exams");
@@ -69,7 +69,7 @@ export default function TeacherExamsPage() {
 
   const fetchClasses = async () => {
     try {
-      const { data } = await axios.get("/api/teacher/classes");
+      const { data } = await api.get("/api/teacher/classes");
       setClasses(data.data.classes);
     } catch {
       toast.error("Failed to load classes");
@@ -201,7 +201,7 @@ export default function TeacherExamsPage() {
     };
 
     try {
-      await axios.post("/api/exams/teacher", payload);
+      await api.post("/api/exams/teacher", payload);
       toast.success("Exam created successfully!");
       setIsBuilding(false);
       setExamForm(DEFAULT_EXAM_FORM);
@@ -213,7 +213,7 @@ export default function TeacherExamsPage() {
 
   const publishExam = async examId => {
     try {
-      await axios.put(`/api/exams/teacher/${examId}/publish`);
+      await api.put(`/api/exams/teacher/${examId}/publish`);
       toast.success("Exam published successfully!");
       fetchExams();
     } catch (err) {

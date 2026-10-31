@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import axios from "axios";
+import api from "@/api/client";
 import { toast } from "sonner";
 import { Sparkles, X, Loader2, Trash2, BookOpen } from "lucide-react";
 
@@ -38,7 +38,7 @@ export default function AIQuestionGenerator({ onClose, onSaved }) {
     }
     try {
       setGenerating(true);
-      const { data } = await axios.post("/api/exams/teacher/generate-ai-questions", {
+      const { data } = await api.post("/api/exams/teacher/generate-ai-questions", {
         topic, difficulty, types, count,
       });
       setPreview(data.data.questions || []);
@@ -57,7 +57,7 @@ export default function AIQuestionGenerator({ onClose, onSaved }) {
     if (!preview || preview.length === 0) return;
     try {
       setSaving(true);
-      await axios.post("/api/question-bank/bulk-import", { questions: preview });
+      await api.post("/api/question-bank/bulk-import", { questions: preview });
       toast.success(`Saved ${preview.length} question${preview.length > 1 ? "s" : ""} to the Question Bank`);
       onSaved?.();
       onClose();

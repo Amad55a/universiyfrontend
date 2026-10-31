@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import axios from "axios";
+import api from "@/api/client";
 import { History, Loader2, AlertCircle } from "lucide-react";
 
 export default function HistoryTab({ examId, subId }) {
@@ -10,7 +10,7 @@ export default function HistoryTab({ examId, subId }) {
     const fetchLogs = async () => {
       try {
         setLoading(true);
-        const { data } = await axios.get(
+        const { data } = await api.get(
           `/api/exams/teacher/${examId}/submissions/${subId}/logs`
         );
         setLogs(data.data.logs || []);

@@ -219,6 +219,65 @@ describe("api client URL normalization", () => {
     expect(adapter.mock.calls.every(([config]) => config.withCredentials)).toBe(true);
   });
 
+  it("refreshes an expired exam-session request and retries it with credentials", async () => {
+    let protectedAttempts = 0;
+    const getPath = (config) => new URL(config.url, window.location.origin).pathname;
+    const adapter = vi.fn(async (config) => {
+      if (getPath(config) === "/api/v1/auth/refresh-token") {
+        return {
+          data: { data: { accessToken: "refreshed-access-token" } },
+          status: 200,
+          statusText: "OK",
+          headers: {},
+          config,
+        };
+      }
+
+      protectedAttempts += 1;
+      if (protectedAttempts === 1) {
+        return Promise.reject({ config, response: { status: 401, config } });
+      }
+      return {
+        data: { data: { exam: { _id: "exam-1" } } },
+        status: 200,
+        statusText: "OK",
+        headers: {},
+        config,
+      };
+    });
+    api.defaults.adapter = adapter;
+
+    const response = await api.get("/exams/student/exam-1/start");
+
+    expect(response.data.data.exam._id).toBe("exam-1");
+    expect(adapter.mock.calls.map(([config]) => getPath(config))).toEqual([
+      "/api/v1/exams/student/exam-1/start",
+      "/api/v1/auth/refresh-token",
+      "/api/v1/exams/student/exam-1/start",
+    ]);
+    expect(adapter.mock.calls.every(([config]) => config.withCredentials)).toBe(true);
+  });
+
+  it("sends teacher exam list and create requests through the shared credentialed client", async () => {
+    const adapter = vi.fn(async (config) => ({
+      data: { success: true },
+      status: 200,
+      statusText: "OK",
+      headers: {},
+      config,
+    }));
+    api.defaults.adapter = adapter;
+
+    await api.get("/api/exams/teacher");
+    await api.post("/api/exams/teacher", { title: "Test exam" });
+
+    expect(adapter.mock.calls.map(([config]) => config.url)).toEqual([
+      "/api/v1/exams/teacher",
+      "/api/v1/exams/teacher",
+    ]);
+    expect(adapter.mock.calls.every(([config]) => config.withCredentials)).toBe(true);
+  });
+
   it("shares one refresh operation across concurrent expired requests", async () => {
     let refreshAttempts = 0;
     const protectedAttempts = new Map();

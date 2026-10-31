@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import axios from "axios";
+import api from "@/api/client";
 import { toast } from "sonner";
 import {
   BarChart2, Award, TrendingUp, Users, Percent, HelpCircle,
@@ -15,7 +15,7 @@ export default function TeacherResultsPage() {
   useEffect(() => {
     const fetchExams = async () => {
       try {
-        const { data } = await axios.get("/api/exams/teacher");
+        const { data } = await api.get("/api/exams/teacher");
         const list = data.data?.exams || [];
         setExams(list);
         if (list.length > 0) {
@@ -32,7 +32,7 @@ export default function TeacherResultsPage() {
     if (!selectedExamId) return;
     try {
       setLoading(true);
-      const { data } = await axios.get(
+      const { data } = await api.get(
         `/api/exams/teacher/${selectedExamId}/submissions/results`
       );
       setResultsData(data.data);

@@ -24,7 +24,7 @@
  *    reloaded from the DB when they navigate back to the question.
  */
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import axios from "axios";
+import api from "@/api/client";
 import { toast } from "sonner";
 import { Link, useNavigate, useLocation, useParams } from "react-router-dom";
 import { useLanguage } from "../../hooks/useLanguage";
@@ -165,10 +165,9 @@ export default function StudentExamSession() {
       ? sebRedemptionRequestRef.current.promise
       : null;
     if (!redemptionRequest) {
-      redemptionRequest = axios.post(
-        "/api/exams/student/seb-launch-token/redeem",
+      redemptionRequest = api.post(
+        "/exams/student/seb-launch-token/redeem",
         { token: sebLaunchToken },
-        { withCredentials: true },
       );
       sebRedemptionRequestRef.current = { key: attemptKey, promise: redemptionRequest };
     }
@@ -207,7 +206,7 @@ export default function StudentExamSession() {
     setSessionError("");
     (async () => {
       try {
-        const { data } = await axios.get(`/api/exams/student/${examId}/start`);
+        const { data } = await api.get(`/exams/student/${examId}/start`);
         if (!data?.data?.exam || String(data.data.exam._id) !== String(examId)) {
           throw new Error("The server returned an invalid exam session.");
         }
@@ -301,7 +300,7 @@ export default function StudentExamSession() {
           answerRevisionRef.current + 1,
         );
         answerRevisionRef.current = clientRevision;
-        await axios.post(`/api/exams/student/${examId}/submit`, {
+        await api.post(`/exams/student/${examId}/submit`, {
           answers: finalAnswers,
           clientRevision,
         });
@@ -346,8 +345,8 @@ export default function StudentExamSession() {
       maxViolations: 5,
       onViolation: (entry) => {
         if (exam?.security?.recordViolations !== false) {
-          axios
-            .post(`/api/exams/student/${examId}/log-cheating`, {
+          api
+            .post(`/exams/student/${examId}/log-cheating`, {
               action: entry.type,
             })
             .catch((error) => {
@@ -409,7 +408,7 @@ export default function StudentExamSession() {
       );
       answerRevisionRef.current = clientRevision;
       setSaveError("");
-      axios.post(`/api/exams/student/${examId}/autosave`, {
+      api.post(`/exams/student/${examId}/autosave`, {
           answers: Object.values(answers),
           clientRevision,
         })
