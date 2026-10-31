@@ -5,7 +5,7 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-import axios from "axios";
+import apiClient from "../api/client";
 
 /**
  * Convert a data URL to a Blob
@@ -36,7 +36,7 @@ export async function uploadDesignToCloudinary(dataURL) {
         const fd = new FormData();
         fd.append("image", blob, "design-export.png");
 
-        const res = await axios.post("/api/upload/design", fd, {
+        const res = await apiClient.post("/api/upload/design", fd, {
             headers: { "Content-Type": "multipart/form-data" },
             timeout: 30000,
         });

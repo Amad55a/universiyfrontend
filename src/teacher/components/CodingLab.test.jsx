@@ -186,15 +186,14 @@ describe("exam coding lab", () => {
   });
 
   it("reports unavailable execution services instead of showing fake output", async () => {
+    const diagnostic = "Docker daemon is unavailable. Start Docker Desktop and verify its configured endpoint, then retry.";
     api.post.mockRejectedValueOnce({
-      response: { data: { message: "Code execution service is unavailable." } },
+      response: { data: { message: diagnostic } },
     });
     render(<StudentCodingLab examId="exam-1" question={question} />);
     fireEvent.click(await screen.findByRole("button", { name: /Run Code/ }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Execution failed: Code execution service is unavailable.",
-    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(`Execution failed: ${diagnostic}`);
     expect(screen.queryByText(/No stdout output/)).not.toBeInTheDocument();
   });
 });

@@ -86,4 +86,64 @@ describe("student exam session recovery", () => {
     });
     expect(api.post).not.toHaveBeenCalled();
   });
+  it("enforces fullscreen popup in normal browser when fullscreenRequired is true", async () => {
+    api.get.mockResolvedValueOnce({
+      data: {
+        data: {
+          exam: {
+            _id: examId,
+            title: "Browser Exam",
+            questions: [{
+              _id: "q-1",
+              type: "mcq",
+              question: "Sample Question",
+              marks: 1,
+              options: [],
+            }],
+            endTime: new Date(Date.now() + 60_000).toISOString(),
+            security: { fullscreenRequired: true, sebRequired: false },
+          },
+          submissionId: "attempt-1",
+          answers: [],
+          serverTime: new Date().toISOString(),
+          sebVerified: false,
+        },
+      },
+    });
+
+    renderSession();
+    expect(await screen.findByRole("heading", { name: "Enter fullscreen to continue" })).toBeInTheDocument();
+  });
+
+  it("omits duplicate fullscreen popup when the session is a verified SEB session", async () => {
+    api.get.mockResolvedValueOnce({
+      data: {
+        data: {
+          exam: {
+            _id: examId,
+            title: "SEB Exam",
+            questions: [{
+              _id: "q-1",
+              type: "mcq",
+              question: "Sample Question",
+              marks: 1,
+              options: [],
+            }],
+            endTime: new Date(Date.now() + 60_000).toISOString(),
+            security: { fullscreenRequired: true, sebRequired: true },
+          },
+          submissionId: "attempt-1",
+          answers: [],
+          serverTime: new Date().toISOString(),
+          sebVerified: true,
+          sebQuitUrl: "http://localhost:5173/exam-session/" + examId + "?sebQuit=test12345",
+        },
+      },
+    });
+
+    renderSession();
+    expect(await screen.findByText("SEB Exam")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Enter fullscreen to continue" })).not.toBeInTheDocument();
+    expect(screen.getByText("SEB active (locked)")).toBeInTheDocument();
+  });
 });

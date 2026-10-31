@@ -13,7 +13,7 @@ const routeExamRequestThroughFrontend = (config) => {
 
   const requestUrl = new URL(config.url, config.baseURL || window.location.origin);
 
-  if (!/^\/api\/(?:v1\/)?exams\//i.test(requestUrl.pathname)) return config;
+  if (!/^\/api\/(?:v1\/)?(?:exams|designs|pages|templates|upload)\b/i.test(requestUrl.pathname)) return config;
 
   config.url = `${requestUrl.pathname}${requestUrl.search}${requestUrl.hash}`;
   config.baseURL = "";
@@ -104,7 +104,8 @@ export const isSebExamSession = () => {
   return currentUrl.pathname.startsWith("/exam-session/") &&
     (currentUrl.searchParams.has("sebLaunchToken") ||
       currentUrl.searchParams.has("sebQuit") ||
-      currentUrl.searchParams.get("sebSession") === "1");
+      currentUrl.searchParams.get("sebSession") === "1" ||
+      (typeof document !== "undefined" && document.cookie.includes("sebExamSession")));
 };
 
 api.interceptors.response.use(

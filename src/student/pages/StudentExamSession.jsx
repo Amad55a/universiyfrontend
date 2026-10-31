@@ -157,6 +157,11 @@ export default function StudentExamSession() {
 
   const exam = examSession?.exam;
   const questions = exam?.questions || [];
+  const isSebVerified = Boolean(
+    examSession?.sebVerified ||
+    examSession?.sebQuitUrl ||
+    (exam?.security?.sebRequired && (sebLaunchReady || new URLSearchParams(location.search).get("sebSession") === "1"))
+  );
 
   useEffect(() => {
     if (!sebLaunchToken || !examId) return;
@@ -300,10 +305,14 @@ export default function StudentExamSession() {
           answerRevisionRef.current + 1,
         );
         answerRevisionRef.current = clientRevision;
-        await api.post(`/exams/student/${examId}/submit`, {
+        const submitRes = await api.post(`/exams/student/${examId}/submit`, {
           answers: finalAnswers,
           clientRevision,
         });
+        const returnedQuitUrl = submitRes?.data?.data?.sebQuitUrl || submitRes?.data?.sebQuitUrl;
+        if (returnedQuitUrl && !examSession?.sebQuitUrl) {
+          setExamSession((prev) => ({ ...prev, sebQuitUrl: returnedQuitUrl }));
+        }
         disarmSecurityRef.current();
         // Clear draft on successful submit
         localStorage.removeItem(draftKey(examId));
@@ -313,7 +322,7 @@ export default function StudentExamSession() {
             ? "Exam auto-submitted."
             : `${t("exam.submit") || "Exam"} submitted successfully!`
         );
-        if (exam?.security?.sebRequired) {
+        if (exam?.security?.sebRequired || isSebVerified) {
           setSubmissionComplete(true);
         } else {
           navigate("/dashboard");
@@ -327,12 +336,23 @@ export default function StudentExamSession() {
     [answers, exam, examId, navigate, t]
   );
 
+  useEffect(() => {
+    if (!submissionComplete) return;
+    const quitUrl = examSession?.sebQuitUrl;
+    if (quitUrl && (exam?.security?.sebRequired || isSebVerified)) {
+      const timer = setTimeout(() => {
+        window.location.replace(quitUrl);
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [submissionComplete, examSession?.sebQuitUrl, exam?.security?.sebRequired, isSebVerified]);
+
   // ─── Security hook ───────────────────────────────────────────────────────────
   const { violations, isFullscreen, violationCount, sessionId, disarm } =
     useExamSecurity({
       enabled: !!exam,
       rules: {
-        fullscreenRequired: exam?.security?.fullscreenRequired,
+        fullscreenRequired: isSebVerified ? false : exam?.security?.fullscreenRequired,
         preventTabSwitch: exam?.security?.detectTabSwitch ?? exam?.security?.preventTabSwitch,
         blockClipboard:
           exam?.security?.disableCopy !== false ||
@@ -493,18 +513,22 @@ export default function StudentExamSession() {
     );
   }
 
-  if (submissionComplete && exam.security?.sebRequired) {
+  if (submissionComplete && (exam?.security?.sebRequired || isSebVerified)) {
     return (
       <main className="mx-auto flex min-h-screen max-w-2xl flex-col items-center justify-center gap-5 p-8 text-center">
         <h1 className="text-3xl font-semibold">Exam submitted successfully</h1>
-        <p>Your answers have been saved. Finish this session to close Safe Exam Browser.</p>
-        {examSession.sebQuitUrl ? (
-          <a
-            href={examSession.sebQuitUrl}
-            className="rounded-lg bg-[#2C2DE0] px-6 py-3 font-semibold text-white"
-          >
-            Finish and close Safe Exam Browser
-          </a>
+        <p>Your answers have been saved. Closing Safe Exam Browser...</p>
+        {examSession?.sebQuitUrl ? (
+          <div className="flex flex-col items-center gap-3">
+            <div className="spinner !w-6 !h-6 !border-accent/30 !border-t-accent" />
+            <p className="text-sm text-neutral-500">Exiting automatically...</p>
+            <a
+              href={examSession.sebQuitUrl}
+              className="mt-2 rounded-lg bg-[#2C2DE0] px-6 py-3 font-semibold text-white hover:opacity-90 transition-opacity"
+            >
+              Close Safe Exam Browser Now
+            </a>
+          </div>
         ) : (
           <p role="alert" className="text-amber-800">
             The secure exit link is unavailable. Please contact your exam supervisor.
@@ -557,7 +581,7 @@ export default function StudentExamSession() {
         required={!!exam?.security?.cameraRequired}
         microphoneRequired={!!exam?.security?.microphoneRequired}
       />
-      {exam.security?.fullscreenRequired && !isFullscreen && (
+      {!isSebVerified && exam?.security?.fullscreenRequired && !isFullscreen && (
         <div className="fixed inset-0 z-[11000] flex items-center justify-center bg-neutral-950/95 p-6 text-white">
           <section className="max-w-xl space-y-4 text-center" role="alert">
             <h2 className="text-2xl font-semibold">Enter fullscreen to continue</h2>
@@ -660,12 +684,14 @@ export default function StudentExamSession() {
       >
         <span className="flex items-center gap-2">
           <span
-            className={`integrity-dot ${isFullscreen ? "text-[#2C2DE0]" : "text-orange-500"
+            className={`integrity-dot ${isSebVerified || isFullscreen ? "text-[#2C2DE0]" : "text-orange-500"
               }`}
           />
-          {isFullscreen
-            ? t("exam.fullscreenActive") || "Fullscreen active"
-            : t("exam.fullscreenInfo") || "Fullscreen recommended"}
+          {isSebVerified
+            ? "SEB active (locked)"
+            : isFullscreen
+              ? t("exam.fullscreenActive") || "Fullscreen active"
+              : t("exam.fullscreenInfo") || "Fullscreen recommended"}
         </span>
         <span className="flex items-center gap-1.5">
           <ShieldAlert className="w-3.5 h-3.5" />

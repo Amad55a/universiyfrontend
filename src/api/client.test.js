@@ -139,6 +139,28 @@ describe("api client URL normalization", () => {
     expect(adapter.mock.calls[0][0].headers["X-UniCORE-SEB-Launch-Token"]).toBeUndefined();
   });
 
+  it("routes design, template, and page API requests through the frontend origin for SEB sessions", async () => {
+    const adapter = vi.fn(async (config) => ({
+      data: {},
+      status: 200,
+      statusText: "OK",
+      headers: {},
+      config,
+    }));
+    api.defaults.adapter = adapter;
+
+    await api.get("https://api.example.test/api/v1/designs");
+    await api.get("https://api.example.test/api/v1/templates");
+    await api.post("https://api.example.test/api/v1/designs", { name: "Lab Design" });
+
+    expect(adapter.mock.calls[0][0].url).toBe("/api/v1/designs");
+    expect(adapter.mock.calls[0][0].baseURL).toBe("");
+    expect(adapter.mock.calls[1][0].url).toBe("/api/v1/templates");
+    expect(adapter.mock.calls[1][0].baseURL).toBe("");
+    expect(adapter.mock.calls[2][0].url).toBe("/api/v1/designs");
+    expect(adapter.mock.calls[2][0].baseURL).toBe("");
+  });
+
   it("sends booking and today's-reservations requests with one API prefix", async () => {
     const adapter = vi.fn(async (config) => ({
       data: {},
