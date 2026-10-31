@@ -98,6 +98,15 @@ const onRefreshFailed = (error) => {
   refreshSubscribers = [];
 };
 
+export const isSebExamSession = () => {
+  if (typeof window === "undefined") return false;
+  const currentUrl = new URL(window.location.href);
+  return currentUrl.pathname.startsWith("/exam-session/") &&
+    (currentUrl.searchParams.has("sebLaunchToken") ||
+      currentUrl.searchParams.has("sebQuit") ||
+      currentUrl.searchParams.get("sebSession") === "1");
+};
+
 api.interceptors.response.use(
   (response) => {
     // Capture access token if returned on login or refresh
@@ -116,7 +125,14 @@ api.interceptors.response.use(
     const isAuthMutation =
       /\/auth\/(login|logout|register|google|forgot-password|reset-password)/i.test(url);
 
-    if (status === 401 && originalRequest && !originalRequest._retry && !isRefreshRequest && !isAuthMutation) {
+    if (
+      status === 401 &&
+      originalRequest &&
+      !originalRequest._retry &&
+      !isRefreshRequest &&
+      !isAuthMutation &&
+      !isSebExamSession()
+    ) {
       originalRequest._retry = true;
 
       if (isRefreshing) {

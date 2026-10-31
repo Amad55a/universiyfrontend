@@ -10,6 +10,7 @@ afterEach(() => {
   api.defaults.adapter = originalAdapter;
   axios.defaults.adapter = originalAxiosAdapter;
   setAccessToken(null);
+  window.history.replaceState({}, "", "/");
   window.sessionStorage.removeItem("unicores-seb-launch-token:507f1f77bcf86cd799439011");
 });
 
@@ -256,6 +257,21 @@ describe("api client URL normalization", () => {
       "/api/v1/exams/student/exam-1/start",
     ]);
     expect(adapter.mock.calls.every(([config]) => config.withCredentials)).toBe(true);
+  });
+
+  it("does not use ordinary refresh-token recovery inside a SEB exam session", async () => {
+    window.history.replaceState({}, "", "/exam-session/exam-1?sebSession=1");
+    const adapter = vi.fn(async (config) =>
+      Promise.reject({ config, response: { status: 401, config } }),
+    );
+    api.defaults.adapter = adapter;
+
+    await expect(api.get("/exams/student/exam-1/start")).rejects.toMatchObject({
+      response: { status: 401 },
+    });
+
+    expect(adapter).toHaveBeenCalledOnce();
+    expect(adapter.mock.calls[0][0].url).toBe("/api/v1/exams/student/exam-1/start");
   });
 
   it("sends teacher exam list and create requests through the shared credentialed client", async () => {

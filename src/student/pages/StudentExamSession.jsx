@@ -181,7 +181,7 @@ export default function StudentExamSession() {
         }
         if (!cancelled) {
           setSessionError("");
-          navigate(location.pathname, { replace: true });
+          navigate(`${location.pathname}?sebSession=1`, { replace: true });
           setSebLaunchReady(true);
         }
       } catch (error) {

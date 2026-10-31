@@ -1,5 +1,5 @@
-import { createContext, useContext, useEffect, useState } from "react";
-import api, { setAccessToken } from "@/api/client";
+import React, { createContext, useContext, useEffect, useState } from "react";
+import api, { isSebExamSession, setAccessToken } from "@/api/client";
 
 const AuthContext = createContext();
 
@@ -25,6 +25,12 @@ const AuthProvider = ({ children }) => {
     let cancelled = false;
 
     const checkAuth = async () => {
+      if (isSebExamSession()) {
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+
       try {
         const userObj = await fetchCurrentUser();
         if (cancelled) return;
